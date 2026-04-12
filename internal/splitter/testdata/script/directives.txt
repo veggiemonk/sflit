@@ -1,0 +1,12 @@
+# //go: directives above a decl travel with it.
+exec sflit -source a.go -sink b.go -regex '^Foo' -move
+grep 'go:noinline' b.go
+! grep 'go:noinline' a.go
+
+-- a.go --
+package p
+
+//go:noinline
+func Foo() {}
+
+func Other() {}

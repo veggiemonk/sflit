@@ -1,0 +1,26 @@
+# Move a type out of a grouped type decl; sibling types remain in source.
+exec sflit -source big.go -sink my_struct.go -receiver MyStruct -move
+cmp my_struct.go expected_sink.go
+cmp big.go expected_src.go
+
+-- big.go --
+package p
+
+type (
+	Helper struct{}
+	MyStruct struct{ X int }
+)
+
+func (m MyStruct) Foo() {}
+-- expected_sink.go --
+package p
+
+type MyStruct struct{ X int }
+
+func (m MyStruct) Foo() {}
+-- expected_src.go --
+package p
+
+type (
+	Helper struct{}
+)

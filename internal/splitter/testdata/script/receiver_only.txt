@@ -1,0 +1,25 @@
+# Move a type and all its methods to a new sink file.
+exec sflit -source big.go -sink my_struct.go -receiver MyStruct -move
+cmp my_struct.go expected_sink.go
+cmp big.go expected_src.go
+
+-- big.go --
+package p
+
+type MyStruct struct{ X int }
+
+func (m MyStruct) A() int  { return m.X }
+func (m *MyStruct) B() int { return m.X }
+
+func Other() {}
+-- expected_sink.go --
+package p
+
+type MyStruct struct{ X int }
+
+func (m MyStruct) A() int  { return m.X }
+func (m *MyStruct) B() int { return m.X }
+-- expected_src.go --
+package p
+
+func Other() {}

@@ -1,0 +1,12 @@
+# Doc comment travels with the moved decl.
+exec sflit -source a.go -sink b.go -regex '^Foo' -move
+grep 'Foo does the thing' b.go
+! grep 'Foo does the thing' a.go
+
+-- a.go --
+package p
+
+// Foo does the thing.
+func Foo() {}
+
+func Other() {}

@@ -1,0 +1,8 @@
+# --tool-schema prints JSON tool definition to stdout and exits 0.
+exec sflit --tool-schema
+stdout '"name":\s*"sflit"'
+stdout '"parameters"'
+stdout '"examples"'
+stdout '"exit_codes"'
+stdout '"selection_rules"'
+stdout '"description"'

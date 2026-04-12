@@ -1,0 +1,28 @@
+# -json prints structured JSON to stdout on success.
+exec sflit -source big.go -sink small.go -regex '^Filter' -move -json
+stdout '"source":'
+stdout '"sink":'
+stdout '"move": true'
+stdout '"matched":'
+stdout '"FilterA"'
+stdout '"declarations_remaining": 1'
+cmp small.go expected_small.go
+
+# -json still prints errors to stderr on failure, no JSON on stdout.
+! exec sflit -source big.go -sink small.go -regex '^NoMatch' -json
+! stdout '.'
+stderr 'no decls matched'
+
+-- big.go --
+package p
+
+import "fmt"
+
+func FilterA() { fmt.Println("a") }
+func Other()   {}
+-- expected_small.go --
+package p
+
+import "fmt"
+
+func FilterA() { fmt.Println("a") }

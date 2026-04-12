@@ -1,0 +1,13 @@
+# Sink file does not exist beforehand; tool creates it with matching package.
+exec sflit -source a.go -sink b.go -regex '^Foo'
+exists b.go
+cmp b.go expected_b.go
+
+-- a.go --
+package mypkg
+
+func Foo() {}
+-- expected_b.go --
+package mypkg
+
+func Foo() {}

@@ -1,0 +1,12 @@
+# Sink belongs to a different package. Expect error, no writes.
+! exec sflit -source a.go -sink b.go -regex '^Foo'
+stderr 'package'
+
+-- a.go --
+package p
+
+func Foo() {}
+-- b.go --
+package q
+
+func Bar() {}

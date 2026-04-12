@@ -1,0 +1,25 @@
+# Move only methods of a receiver whose names match the regex.
+# The type declaration itself is NOT moved.
+exec sflit -source big.go -sink filters.go -receiver MyStruct -regex '^Filter' -move
+cmp filters.go expected_filters.go
+cmp big.go expected_big.go
+
+-- big.go --
+package p
+
+type MyStruct struct{}
+
+func (m MyStruct) FilterA() {}
+func (m MyStruct) FilterB() {}
+func (m MyStruct) Other()   {}
+-- expected_filters.go --
+package p
+
+func (m MyStruct) FilterA() {}
+func (m MyStruct) FilterB() {}
+-- expected_big.go --
+package p
+
+type MyStruct struct{}
+
+func (m MyStruct) Other() {}

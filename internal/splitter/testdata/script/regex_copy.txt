@@ -1,0 +1,25 @@
+# Copy functions matching regex into a new sink file.
+exec sflit -source big.go -sink small.go -regex '^Filter'
+cmp small.go expected_small.go
+cmp big.go expected_big.go
+
+-- big.go --
+package p
+
+import "fmt"
+
+func FilterA() { fmt.Println("a") }
+func Other()   { fmt.Println("o") }
+-- expected_big.go --
+package p
+
+import "fmt"
+
+func FilterA() { fmt.Println("a") }
+func Other()   { fmt.Println("o") }
+-- expected_small.go --
+package p
+
+import "fmt"
+
+func FilterA() { fmt.Println("a") }

@@ -1,0 +1,17 @@
+# Collision: sink already has a func with the same name.
+# Expect: non-zero exit, stderr contains "collision", files unchanged.
+cp a.go a_before.go
+cp b.go b_before.go
+! exec sflit -source a.go -sink b.go -regex '^Foo' -move
+stderr 'collision'
+cmp a.go a_before.go
+cmp b.go b_before.go
+
+-- a.go --
+package p
+
+func Foo() {}
+-- b.go --
+package p
+
+func Foo() {}

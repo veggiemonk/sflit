@@ -1,0 +1,23 @@
+# Move functions matching regex: source loses them and unused imports,
+# sink gains them and required imports.
+exec sflit -source big.go -sink small.go -regex '^Filter' -move
+cmp small.go expected_small.go
+cmp big.go expected_big.go
+
+-- big.go --
+package p
+
+import "fmt"
+
+func FilterA() { fmt.Println("a") }
+func Other()   {}
+-- expected_big.go --
+package p
+
+func Other() {}
+-- expected_small.go --
+package p
+
+import "fmt"
+
+func FilterA() { fmt.Println("a") }
