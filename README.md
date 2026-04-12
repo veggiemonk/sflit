@@ -17,6 +17,13 @@ Therefore this tool exist.
 **semantic accuracy** (not byte-for-byte): the AST is re-parsed and reprinted
 through `gofmt`, and imports are updated on both sides via `goimports`.
 
+## Dependencies
+
+`sflit` is a self-contained binary with no external runtime dependencies.
+Import management (`goimports`) is compiled in via `golang.org/x/tools/imports` — no separate installation required.
+
+Building from source requires **Go 1.26+**.
+
 ## Usage
 [embedmd]:# (TOOL.md)
 ```md
