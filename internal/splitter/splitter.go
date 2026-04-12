@@ -9,6 +9,8 @@ import (
 	"go/token"
 	"io"
 	"log/slog"
+
+	"github.com/veggiemonk/sflit/internal/version"
 )
 
 // Run executes the full pipeline for the given Config.
@@ -103,6 +105,10 @@ func RunCLI(args []string, _ io.Reader, stdout io.Writer, stderr io.Writer) int 
 	}
 	if args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
 		printHelp(stderr)
+		return 0
+	}
+	if args[0] == "-v" || args[0] == "-version" || args[0] == "--version" {
+		_, _ = fmt.Fprintln(stdout, version.Get())
 		return 0
 	}
 	if args[0] == "--tool-schema" {

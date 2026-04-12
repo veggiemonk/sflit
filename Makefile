@@ -1,3 +1,4 @@
+SHELL := /bin/bash  # Use bash instead of sh
 BINARY  := sflit
 MODULE  := github.com/veggiemonk/sflit
 COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
@@ -37,6 +38,11 @@ fix: ## Run go fix
 
 clean: ## Remove build artifacts
 	rm -f $(BINARY) coverage.out
+
+doc: ## update README.md
+	go run . --help > TOOL.md 2>&1
+	embedmd -w README.md
+	rm -f TOOL.md
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | \

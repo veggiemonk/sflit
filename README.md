@@ -18,30 +18,54 @@ Therefore this tool exist.
 through `gofmt`, and imports are updated on both sides via `goimports`.
 
 ## Usage
+[embedmd]:# (TOOL.md)
+```md
+sflit — semantic file splitter for Go
 
-```bash
-# copy functions matching a regex to another file (default mode)
-sflit -source example_big_file.go -regex '^Filter' -sink ../anotherpkg/example_file.go
+Moves or copies top-level Go declarations between files.
+AST is re-parsed and reprinted through gofmt; imports updated via goimports.
 
-# move functions matching a regex to another file
-sflit -source example_big_file.go -regex '^Filter' -sink example_small_file.go -move
+Usage:
+  sflit -source <file> -sink <file> [flags]
 
-# move a type and all its methods to another file
-sflit -source example_big_file.go -receiver MyStruct -sink my_struct.go -move
+Flags:
+  -source    string  Source Go file (required)
+  -sink      string  Destination Go file, created if absent (required)
+  -regex     string  Regex matched against function/method names
+  -receiver  string  Receiver type name
+  -move              Delete matched decls from source after writing (default: copy)
+  -json              Print structured JSON result to stdout
+  -debug             Print debug logs to stderr
 
-# move only methods of a type whose names match a regex
-sflit -source my_struct_big_file.go -receiver MyStruct -regex '^Filter' -sink my_struct_filter.go -move
+Selection rules:
+  -regex R              Functions whose name matches R
+  -receiver T           Type T and all its methods
+  -receiver T -regex R  Only methods of T matching R (type stays)
+
+At least one of -regex or -receiver is required.
+
+Examples:
+  # Copy functions matching a regex
+  sflit -source big.go -regex '^Filter' -sink filter.go
+
+  # Move a type and all its methods
+  sflit -source big.go -receiver MyStruct -sink my_struct.go -move
+
+  # Move specific methods
+  sflit -source big.go -receiver MyStruct -regex '^Filter' -sink my_struct_filter.go -move
+
+  # Undo: moved a func and build broke? Move it back
+  sflit -source small.go -regex '^Filter' -sink big.go -move
+
+Other:
+  --tool-schema  Print JSON tool definition with examples (for agent integration)
+
+Exit codes:
+  0  Success
+  1  Runtime error (collision, package mismatch, parse error)
+  2  Flag/usage error
 ```
 
-### Flags
-
-- `-source` (required): source Go file.
-- `-sink` (required): destination Go file. Created if absent, appended to if present.
-- `-regex`: regex matched against top-level plain func names, or against method names when combined with `-receiver`.
-- `-receiver`: receiver type name. Alone, it moves the type declaration plus all methods of that type. Combined with `-regex`, it moves only matching methods (the type itself stays).
-- `-move`: delete matched decls from the source after writing the sink. Default is copy.
-
-At least one of `-regex` or `-receiver` is required.
 
 ### Guarantees
 
