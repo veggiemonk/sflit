@@ -55,13 +55,3 @@ Entry format:
   useful paired with tags.
 - **Acceptance:** `CHANGELOG.md` follows Keep-a-Changelog, populated
   retroactively from git log; release workflow appends entries on tag.
-
-## Expand README with `--tool-schema` + agent integration guide
-- **Context:** `--tool-schema` emits a JSON tool definition with
-  examples (see `internal/splitter/schema.go`). README only mentions
-  the flag name.
-- **Why deferred:** initial pass landed Installation + flag surface.
-  Agent integration doc needs a worked example (Claude / OpenAI tool
-  use payload) which merits its own section.
-- **Acceptance:** README section showing how to feed `--tool-schema`
-  output to an LLM tool-use loop; link to `internal/splitter/schema.go`.
