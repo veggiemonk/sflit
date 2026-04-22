@@ -8,16 +8,16 @@ import (
 func TestConfigValidate(t *testing.T) {
 	cases := []struct {
 		name string
+		want string
 		cfg  Config
-		want string // expected error substring; empty = no error
 	}{
-		{"ok_regex", Config{Source: "a.go", Sink: "b.go", Regex: "^F"}, ""},
-		{"ok_receiver", Config{Source: "a.go", Sink: "b.go", Receiver: "T"}, ""},
-		{"ok_both", Config{Source: "a.go", Sink: "b.go", Receiver: "T", Regex: "^F"}, ""},
-		{"missing_source", Config{Sink: "b.go", Regex: "^F"}, "source"},
-		{"missing_sink", Config{Source: "a.go", Regex: "^F"}, "sink"},
-		{"missing_criteria", Config{Source: "a.go", Sink: "b.go"}, "regex"},
-		{"bad_regex", Config{Source: "a.go", Sink: "b.go", Regex: "("}, "regex"},
+		{name: "ok_regex", cfg: Config{Source: "a.go", Sink: "b.go", Regex: "^F"}},
+		{name: "ok_receiver", cfg: Config{Source: "a.go", Sink: "b.go", Receiver: "T"}},
+		{name: "ok_both", cfg: Config{Source: "a.go", Sink: "b.go", Receiver: "T", Regex: "^F"}},
+		{name: "missing_source", cfg: Config{Sink: "b.go", Regex: "^F"}, want: "source"},
+		{name: "missing_sink", cfg: Config{Source: "a.go", Regex: "^F"}, want: "sink"},
+		{name: "missing_criteria", cfg: Config{Source: "a.go", Sink: "b.go"}, want: "regex"},
+		{name: "bad_regex", cfg: Config{Source: "a.go", Sink: "b.go", Regex: "("}, want: "regex"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

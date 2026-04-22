@@ -10,12 +10,12 @@ import (
 
 // Config holds the parameters for a single splitter run.
 type Config struct {
+	Logger   *slog.Logger
 	Source   string
 	Sink     string
 	Regex    string
 	Receiver string
 	Move     bool
-	Logger   *slog.Logger
 }
 
 // logger returns the configured logger, or a no-op discard logger.

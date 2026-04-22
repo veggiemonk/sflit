@@ -1,6 +1,7 @@
 package splitter
 
 import (
+	"bytes"
 	"os"
 	"path/filepath"
 	"strings"
@@ -115,10 +116,10 @@ func TestRun_CollisionBail(t *testing.T) {
 	}
 	srcAfter, _ := os.ReadFile(filepath.Clean(src))
 	sinkAfter, _ := os.ReadFile(filepath.Clean(sink))
-	if string(srcBefore) != string(srcAfter) {
+	if !bytes.Equal(srcBefore, srcAfter) {
 		t.Fatalf("src modified after bail")
 	}
-	if string(sinkBefore) != string(sinkAfter) {
+	if !bytes.Equal(sinkBefore, sinkAfter) {
 		t.Fatalf("sink modified after bail")
 	}
 }

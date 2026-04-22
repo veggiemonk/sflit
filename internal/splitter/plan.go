@@ -7,13 +7,13 @@ import (
 
 type Plan struct {
 	Fset              *token.FileSet
-	SrcPath           string
-	SinkPath          string
 	SrcFile           *ast.File
 	SinkFile          *ast.File
+	SrcPath           string
+	SinkPath          string
+	OrigSinkDeclCount int // number of decls in sink before extracted were appended
 	SinkIsNew         bool
 	Move              bool
-	OrigSinkDeclCount int // number of decls in sink before extracted were appended
 }
 
 func buildPlan(

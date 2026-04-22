@@ -4,7 +4,7 @@ package splitter
 type Result struct {
 	Source                string   `json:"source"`
 	Sink                  string   `json:"sink"`
-	Move                  bool     `json:"move"`
 	Matched               []string `json:"matched"`
 	DeclarationsRemaining int      `json:"declarations_remaining"`
+	Move                  bool     `json:"move"`
 }

@@ -1,6 +1,7 @@
 package splitter
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
@@ -69,7 +70,7 @@ func receiverBaseName(expr ast.Expr) string {
 func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 	// Empty selection: plan's sink has no decls appended beyond the original.
 	if len(plan.SinkFile.Decls) == plan.OrigSinkDeclCount {
-		return fmt.Errorf("no decls matched the selection criteria")
+		return errors.New("no decls matched the selection criteria")
 	}
 	// Package mismatch.
 	if origSink != nil && origSink.Name.Name != origSrc.Name.Name {
@@ -80,7 +81,7 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 	}
 	// Collisions: keys from the appended tail against keys from the pre-existing head.
 	existing := make(map[string]bool)
-	for i := 0; i < plan.OrigSinkDeclCount; i++ {
+	for i := range plan.OrigSinkDeclCount {
 		for _, k := range declKeys(plan.SinkFile.Decls[i]) {
 			existing[k] = true
 		}

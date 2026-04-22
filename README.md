@@ -24,6 +24,21 @@ Import management (`goimports`) is compiled in via `golang.org/x/tools/imports` 
 
 Building from source requires **Go 1.26+**.
 
+## Installation
+
+```sh
+go install github.com/veggiemonk/sflit@latest
+```
+
+Or clone and build locally:
+
+```sh
+git clone https://github.com/veggiemonk/sflit.git
+cd sflit
+make build      # produces ./sflit
+make install    # installs to $GOPATH/bin
+```
+
 ## Usage
 [embedmd]:# (TOOL.md)
 ```md
@@ -77,6 +92,19 @@ Exit codes:
   2  Flag/usage error
 ```
 
+
+### Agent integration
+
+`sflit --tool-schema` emits a JSON tool definition (name, description,
+parameters, selection rules, worked examples, exit codes) suitable for
+LLM tool-use loops. Pipe it straight into your agent's tool registry:
+
+```sh
+sflit --tool-schema | jq .
+```
+
+See [`internal/splitter/schema.go`](internal/splitter/schema.go) for the
+schema source.
 
 ### Guarantees
 
