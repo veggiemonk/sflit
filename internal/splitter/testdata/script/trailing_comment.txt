@@ -1,0 +1,23 @@
+# Trailing comment after all-moved tail travels with last moved decl.
+exec sflit -source a.go -sink b.go -receiver App -move
+cmp a.go expected_src.go
+cmp b.go expected_sink.go
+
+-- a.go --
+package p
+
+type App struct{}
+
+func (a App) M() {}
+
+// orphan trailing comment
+-- expected_src.go --
+package p
+-- expected_sink.go --
+package p
+
+type App struct{}
+
+func (a App) M() {}
+
+// orphan trailing comment

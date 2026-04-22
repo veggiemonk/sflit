@@ -40,6 +40,64 @@ func Foo() {}
 	}
 }
 
+func TestExtract_TrailingCommentTravels(t *testing.T) {
+	fset, f := mustParse(t, `package p
+
+type App struct{}
+
+func (a App) M() {}
+
+// trailing orphan
+`)
+	ms, _ := selectDecls(f, Config{Receiver: "App"})
+	ex := extractMatches(fset, f, ms)
+	// The last matched decl (M) should carry the trailing orphan comment.
+	var tailLead []*ast.CommentGroup
+	for _, e := range ex {
+		if fd, ok := e.Decl.(*ast.FuncDecl); ok && fd.Name.Name == "M" {
+			tailLead = e.LeadComms
+		}
+	}
+	found := false
+	for _, cg := range tailLead {
+		if strings.Contains(cg.Text(), "trailing orphan") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("trailing orphan comment not attached to last matched decl")
+	}
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "trailing orphan") {
+			t.Fatalf("trailing orphan still present in source file.Comments")
+		}
+	}
+}
+
+func TestExtract_TrailingCommentStaysWhenTailNotMatched(t *testing.T) {
+	fset, f := mustParse(t, `package p
+
+type App struct{}
+
+func (a App) M() {}
+
+func Keep() {}
+
+// comment trailing Keep
+`)
+	ms, _ := selectDecls(f, Config{Receiver: "App"})
+	ex := extractMatches(fset, f, ms)
+	// Keep is unmoved and is the last decl. The trailing comment must NOT
+	// travel — it belongs to the unmoved tail.
+	for _, e := range ex {
+		for _, cg := range e.LeadComms {
+			if strings.Contains(cg.Text(), "trailing Keep") {
+				t.Fatalf("trailing comment after unmoved Keep was yanked")
+			}
+		}
+	}
+}
+
 func TestExtract_FreeFloatingAbove(t *testing.T) {
 	fset, f := mustParse(t, `package p
 

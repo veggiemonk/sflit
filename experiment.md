@@ -34,11 +34,12 @@ Format: `invocation | exit | notes`
    `package app_test` decls into a file that is `package app` fails
    fast with `sink package "app" does not match source package
    "app_test"`. Good behavior; keep it.
-5. **Orphan freestanding comments.** `-receiver T` preserves doc
-   comments on moved decls cleanly, but standalone comment groups
-   between decls (e.g. `// tea.sequenceMsg is unexported…`) are
-   sometimes left behind when their anchor decl moves. Cosmetic only;
-   goimports doesn't touch them. Open.
+5. ~~**Orphan freestanding comments.**~~ **FIXED.** Trailing comment
+   groups that sat after the last moved decl were stranded in the
+   source. `extractMatches` now detects the all-moved-tail case and
+   carries trailing comments with the last matched decl. Regression
+   tests: `TestExtract_TrailingComment*` and
+   `testdata/script/trailing_comment.txt`.
 
 ## Summary — source split
 

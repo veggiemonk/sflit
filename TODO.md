@@ -15,20 +15,6 @@ Entry format:
 
 ---
 
-## Orphan standalone comments left behind on receiver moves
-- **Context:** `internal/splitter/extract.go` + `render.go`. Observed while
-  splitting `app.go` / `app_test.go` (see `experiment.md` quirk 5). When a
-  receiver-bundled move (`-receiver T`) extracts methods, freestanding
-  comment groups that sit between decls (e.g. `// tea.sequenceMsg is
-  unexported…`) are sometimes left behind in the source even though their
-  anchor decl moved.
-- **Why deferred:** cosmetic only; `goimports` doesn't touch them and
-  build/tests stay green. Needs a comment-association pass in the
-  extractor.
-- **Acceptance:** add a testdata case with an orphan comment above a
-  moved method; comment travels with the decl; source has no dangling
-  comment.
-
 ## CI pipeline for forgejo remote
 - **Context:** `origin` points at forgejo (`ssh://forgejo/eijlnu/sflit.git`).
   GitHub Actions workflow added under `.github/workflows/ci.yml`; forgejo
