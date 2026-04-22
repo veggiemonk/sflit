@@ -1,0 +1,40 @@
+# Grouped var/const decls split cleanly: matching specs move, siblings
+# stay behind. Multi-name specs (`var a, b = …`) split name-by-name
+# so sibling names keep their original types/values.
+exec sflit -source big.go -sink small.go -regex '^Matched' -move
+cmp small.go expected_small.go
+cmp big.go expected_big.go
+
+-- big.go --
+package p
+
+var (
+	MatchedVar  = 10
+	UntouchedA  = "stay"
+	MatchedPair = 42
+	UntouchedB  = true
+)
+
+const (
+	MatchedConst   = 1
+	UntouchedConst = 2
+)
+-- expected_big.go --
+package p
+
+var (
+	UntouchedA = "stay"
+
+	UntouchedB = true
+)
+
+const (
+	UntouchedConst = 2
+)
+-- expected_small.go --
+package p
+
+var MatchedVar = 10
+var MatchedPair = 42
+
+const MatchedConst = 1

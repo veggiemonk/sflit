@@ -20,11 +20,11 @@ func toolSchemaJSON() []byte {
 				},
 				"regex": map[string]any{
 					"type":        "string",
-					"description": "Regex matched against function names, or method names when combined with receiver",
+					"description": "Regex matched against top-level declaration names — funcs, methods (any receiver), vars, consts, types. Grouped var/const/type blocks are split so only matching specs move. Combine with -receiver to restrict to methods of one type.",
 				},
 				"receiver": map[string]any{
 					"type":        "string",
-					"description": "Receiver type name. Alone: moves type + all methods. With regex: moves only matching methods",
+					"description": "Receiver type name. Alone: moves the type plus every method. With -regex: restricts to methods of that type matching the regex.",
 				},
 				"move": map[string]any{
 					"type":        "boolean",
@@ -41,7 +41,7 @@ func toolSchemaJSON() []byte {
 			"oneOf_required": []string{"regex", "receiver"},
 		},
 		"selection_rules": []map[string]string{
-			{"flags": "-regex R", "behavior": "Functions whose name matches R"},
+			{"flags": "-regex R", "behavior": "Any top-level decl whose name matches R (funcs, methods, vars, consts, types). Grouped var/const/type blocks are split so only matching specs move."},
 			{"flags": "-receiver T", "behavior": "Type T and all its methods"},
 			{"flags": "-receiver T -regex R", "behavior": "Only methods of T matching R (type stays)"},
 		},

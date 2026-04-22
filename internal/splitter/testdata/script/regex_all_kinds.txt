@@ -1,0 +1,40 @@
+# New semantic (single-name-namespace): -regex R alone matches any
+# top-level decl by name — plain funcs, methods, vars, consts, types.
+# Prior behaviour matched only free funcs, forcing agents to re-issue
+# with -receiver to pick up methods. This fixture guards the new,
+# single-invocation workflow against regression.
+exec sflit -source big.go -sink small.go -regex '^Filter' -move
+cmp small.go expected_small.go
+cmp big.go expected_big.go
+
+-- big.go --
+package p
+
+type R struct{}
+
+func FilterFunc() {}
+func (r R) FilterMethod() {}
+
+var FilterVar = 1
+const FilterConst = 2
+
+type FilterType struct{ X int }
+
+func Other() {}
+-- expected_big.go --
+package p
+
+type R struct{}
+
+func Other() {}
+-- expected_small.go --
+package p
+
+func FilterFunc()         {}
+func (r R) FilterMethod() {}
+
+var FilterVar = 1
+
+const FilterConst = 2
+
+type FilterType struct{ X int }

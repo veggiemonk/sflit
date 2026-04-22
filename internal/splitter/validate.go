@@ -3,13 +3,17 @@ package splitter
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 )
 
-// declKeys returns stable name keys for collision detection.
+// declKeys returns stable name keys for collision detection and for
+// the JSON Matched report.
 //
 //	plain func:   ["Foo"]
 //	method:       ["T.Foo"] (receiver base type)
-//	type decl:    ["type T"] (one entry per TypeSpec in the group)
+//	type decl:    ["type T"]  (one entry per TypeSpec in the group)
+//	var decl:     ["var X"]   (one entry per declared name, handles `var a, b = …`)
+//	const decl:   ["const X"]
 func declKeys(d ast.Decl) []string {
 	switch x := d.(type) {
 	case *ast.FuncDecl:
@@ -24,8 +28,17 @@ func declKeys(d ast.Decl) []string {
 	case *ast.GenDecl:
 		var keys []string
 		for _, s := range x.Specs {
-			if ts, ok := s.(*ast.TypeSpec); ok {
-				keys = append(keys, "type "+ts.Name.Name)
+			switch ss := s.(type) {
+			case *ast.TypeSpec:
+				keys = append(keys, "type "+ss.Name.Name)
+			case *ast.ValueSpec:
+				kind := "var"
+				if x.Tok == token.CONST {
+					kind = "const"
+				}
+				for _, n := range ss.Names {
+					keys = append(keys, kind+" "+n.Name)
+				}
 			}
 		}
 		return keys

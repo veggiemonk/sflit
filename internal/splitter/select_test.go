@@ -25,8 +25,17 @@ func matchNames(ms []Match) []string {
 			out = append(out, d.Name.Name)
 		case *ast.GenDecl:
 			for _, s := range d.Specs {
-				if ts, ok := s.(*ast.TypeSpec); ok {
-					out = append(out, "type "+ts.Name.Name)
+				switch ss := s.(type) {
+				case *ast.TypeSpec:
+					out = append(out, "type "+ss.Name.Name)
+				case *ast.ValueSpec:
+					kind := "var"
+					if d.Tok == token.CONST {
+						kind = "const"
+					}
+					for _, n := range ss.Names {
+						out = append(out, kind+" "+n.Name)
+					}
 				}
 			}
 		}
@@ -34,13 +43,21 @@ func matchNames(ms []Match) []string {
 	return out
 }
 
-func TestSelectRegexOnly_PlainFuncs(t *testing.T) {
+func TestSelectRegexOnly_MatchesAllKinds(t *testing.T) {
+	// regex-only mode matches funcs, methods, vars, consts, and types
+	// by name. Prior behaviour (regex-only = free funcs only) forced
+	// callers to issue N invocations for a mixed split; the new
+	// semantic collapses it to one.
 	_, f := mustParse(t, `package p
 
-func FilterA() {}
-func FilterB() {}
+func FilterFunc() {}
 func other() {}
-func (r *R) FilterC() {} // method, must NOT match regex-only mode
+func (r *R) FilterMethod() {} // method — now matches regex-only
+type R struct{}
+
+var FilterVar = 1
+const FilterConst = 2
+type FilterType struct{}
 `)
 	cfg := Config{Regex: "^Filter"}
 	ms, err := selectDecls(f, cfg)
@@ -48,13 +65,19 @@ func (r *R) FilterC() {} // method, must NOT match regex-only mode
 		t.Fatal(err)
 	}
 	got := matchNames(ms)
-	want := []string{"FilterA", "FilterB"}
-	if len(got) != len(want) {
-		t.Fatalf("got %v want %v", got, want)
+	want := map[string]bool{
+		"FilterFunc":        true,
+		"FilterMethod":      true,
+		"var FilterVar":     true,
+		"const FilterConst": true,
+		"type FilterType":   true,
 	}
-	for i := range got {
-		if got[i] != want[i] {
-			t.Fatalf("got %v want %v", got, want)
+	if len(got) != len(want) {
+		t.Fatalf("got %v want keys %v", got, want)
+	}
+	for _, g := range got {
+		if !want[g] {
+			t.Fatalf("unexpected %q in %v", g, got)
 		}
 	}
 }

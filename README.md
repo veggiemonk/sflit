@@ -38,16 +38,19 @@ Usage:
 Flags:
   -source    string  Source Go file (required)
   -sink      string  Destination Go file, created if absent (required)
-  -regex     string  Regex matched against function/method names
+  -regex     string  Regex matched against declaration names
   -receiver  string  Receiver type name
   -move              Delete matched decls from source after writing (default: copy)
   -json              Print structured JSON result to stdout
   -debug             Print debug logs to stderr
 
 Selection rules:
-  -regex R              Functions whose name matches R
-  -receiver T           Type T and all its methods
-  -receiver T -regex R  Only methods of T matching R (type stays)
+  -regex R              Any top-level decl whose name matches R — funcs,
+                        methods (any receiver), vars, consts, types.
+                        Grouped var/const/type blocks are split so only
+                        the matching specs move; siblings stay behind.
+  -receiver T           Type T and all its methods (bundled move).
+  -receiver T -regex R  Only methods of T matching R (type stays).
 
 At least one of -regex or -receiver is required.
 
