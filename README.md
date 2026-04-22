@@ -68,6 +68,7 @@ Examples:
   sflit -source small.go -regex '^Filter' -sink big.go -move
 
 Other:
+  -v, -version   Print version information
   --tool-schema  Print JSON tool definition with examples (for agent integration)
 
 Exit codes:

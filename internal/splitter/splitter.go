@@ -1,4 +1,25 @@
 // Package splitter implements the sflit semantic file-splitter pipeline.
+//
+// It moves or copies top-level Go declarations (functions, methods, types,
+// vars, consts) between files with semantic accuracy: source and sink are
+// parsed to AST, matching declarations are selected, the plan is validated
+// (package match, no name collisions), and files are reprinted through
+// gofmt with imports updated via golang.org/x/tools/imports.
+//
+// Selection is driven by [Config]:
+//   - Regex: matches any top-level declaration name (funcs, methods on any
+//     receiver, vars, consts, types). Grouped var/const/type blocks are
+//     split so only matching specs move.
+//   - Receiver: matches a type and all its methods (bundled move).
+//   - Regex + Receiver: restricts to methods of Receiver whose name matches.
+//
+// Entry points:
+//   - [Run] — library API: takes a [Config], returns a [Result].
+//   - [RunCLI] — CLI entry point invoked by the sflit binary.
+//
+// Guarantees on [Config.Move]: source and sink are written via temp-file +
+// rename so a crash leaves both files valid. Doc comments and //go:
+// directives travel with the decl they annotate.
 package splitter
 
 import (
