@@ -25,7 +25,7 @@ type Match struct {
 //
 //   - cfg.Regex alone: matches any top-level decl by NAME — funcs,
 //     methods, vars, consts, types. Grouped var/const/type decls are
-//     split so only the matching specs move.
+//     split so only the matching specs are selected.
 //   - cfg.Receiver alone: matches the named type plus every method
 //     whose receiver's base type equals Receiver. Grouped type decls
 //     are split so sibling types stay in place.
@@ -68,7 +68,8 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 				}
 			case cfg.Receiver != "" && re != nil:
 				// receiver + regex: matching methods only.
-				if isMethod && receiverBaseName(x.Recv.List[0].Type) == cfg.Receiver && re.MatchString(x.Name.Name) {
+				if isMethod && receiverBaseName(x.Recv.List[0].Type) == cfg.Receiver &&
+					re.MatchString(x.Name.Name) {
 					out = append(out, Match{Decl: x, Kind: KindMethod})
 				}
 			}

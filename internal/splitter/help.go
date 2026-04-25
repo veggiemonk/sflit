@@ -5,7 +5,7 @@ import "io"
 const helpText = `sflit — semantic file splitter for Go
 
 Moves or copies top-level Go declarations between files.
-AST is re-parsed and reprinted through gofmt; imports updated via goimports.
+AST is re-parsed and reprinted through gofmt; imports are updated in written files.
 
 Usage:
   sflit -source <file> -sink <file> [flags]
@@ -23,8 +23,8 @@ Selection rules:
   -regex R              Any top-level decl whose name matches R — funcs,
                         methods (any receiver), vars, consts, types.
                         Grouped var/const/type blocks are split so only
-                        the matching specs move; siblings stay behind.
-  -receiver T           Type T and all its methods (bundled move).
+                        the matching specs are selected; siblings stay behind.
+  -receiver T           Type T and all its methods (copy by default; move with -move).
   -receiver T -regex R  Only methods of T matching R (type stays).
 
 At least one of -regex or -receiver is required.
@@ -43,13 +43,13 @@ Examples:
   sflit -source small.go -regex '^Filter' -sink big.go -move
 
 Other:
-  -v, -version   Print version information
+  -v, -version, --version  Print version information
   --tool-schema  Print JSON tool definition with examples (for agent integration)
 
 Exit codes:
   0  Success
-  1  Runtime error (collision, package mismatch, parse error)
-  2  Flag/usage error
+  1  Operation error (collision, package mismatch, parse error, no matches, write error)
+  2  Flag/usage error (invalid flags or missing required arguments)
 `
 
 func printHelp(w io.Writer) {

@@ -7,27 +7,27 @@ run:
 
 linters:
   enable:
-    - bodyclose        # checks HTTP response body is closed
-    - copyloopvar      # Go 1.22+ loop var capture
-    - dupword          # catches "the the"
-    - durationcheck    # multiplication of two durations
-    - errcheck         # unchecked errors
-    - errorlint        # errors.Is / errors.As hygiene
-    - forcetypeassert  # type assertions without the comma-ok form
-    - gocritic         # opinionated diagnostics
-    - gosec            # security scanner
-    - govet            # stdlib vet
-    - ineffassign      # ineffectual assignments
-    - intrange         # prefer `for range N`
-    - misspell         # spelling
-    - nilerr           # `return nil` after checking err != nil
-    - noctx            # http requests without context
-    - perfsprint       # fmt.Sprintf → string concat where safe
-    - prealloc         # slice preallocation hints
-    - staticcheck      # staticcheck.io
-    - unconvert        # redundant type conversions
-    - unparam          # unused function parameters
-    - unused           # dead code
+    - bodyclose # checks HTTP response body is closed
+    - copyloopvar # Go 1.22+ loop var capture
+    - dupword # catches "the the"
+    - durationcheck # multiplication of two durations
+    - errcheck # unchecked errors
+    - errorlint # errors.Is / errors.As hygiene
+    - forcetypeassert # type assertions without the comma-ok form
+    - gocritic # opinionated diagnostics
+    - gosec # security scanner
+    - govet # stdlib vet
+    - ineffassign # ineffectual assignments
+    - intrange # prefer `for range N`
+    - misspell # spelling
+    - nilerr # `return nil` after checking err != nil
+    - noctx # http requests without context
+    - perfsprint # fmt.Sprintf → string concat where safe
+    - prealloc # slice preallocation hints
+    - staticcheck # staticcheck.io
+    - unconvert # redundant type conversions
+    - unparam # unused function parameters
+    - unused # dead code
 
   settings:
     govet:
@@ -35,7 +35,7 @@ linters:
       disable:
         - shadow
     staticcheck:
-      checks: ["all", "-QF1001", "-QF1002"]  # drop quick-fix style nags
+      checks: ["all", "-QF1001", "-QF1002"] # drop quick-fix style nags
     gocritic:
       enabled-tags: [diagnostic, performance]
       disabled-checks:
@@ -43,9 +43,9 @@ linters:
         - ifElseChain
     gosec:
       excludes:
-        - G104  # covered by errcheck
-        - G204  # subprocess with variable — allowed in CLI tooling
-        - G306  # 0600 file perms — CLIs often write executables
+        - G104 # covered by errcheck
+        - G204 # subprocess with variable — allowed in CLI tooling
+        - G306 # 0600 file perms — CLIs often write executables
 
   exclusions:
     generated: lax
@@ -63,6 +63,11 @@ issues:
   max-same-issues: 10
 
 formatters:
+  settings:
+    golines:
+      max-len: 120
+      tab-len: 8
   enable:
+    - golines
     - gofumpt
     - goimports

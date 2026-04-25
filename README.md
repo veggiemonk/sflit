@@ -15,14 +15,14 @@ Therefore this tool exist.
 
 `sflit` moves or copies top-level Go declarations between files with
 **semantic accuracy** (not byte-for-byte): the AST is re-parsed and reprinted
-through `gofmt`, and imports are updated on both sides via `goimports`.
+through `gofmt`, and imports are updated in written files.
 
 ## Dependencies
 
 `sflit` is a self-contained binary with no external runtime dependencies.
 Import management (`goimports`) is compiled in via `golang.org/x/tools/imports` — no separate installation required.
 
-Building from source requires **Go 1.26+**.
+Building from source requires **Go 1.26.2+**.
 
 ## Installation
 
@@ -45,7 +45,7 @@ make install    # installs to $GOPATH/bin
 sflit — semantic file splitter for Go
 
 Moves or copies top-level Go declarations between files.
-AST is re-parsed and reprinted through gofmt; imports updated via goimports.
+AST is re-parsed and reprinted through gofmt; imports are updated in written files.
 
 Usage:
   sflit -source <file> -sink <file> [flags]
@@ -63,8 +63,8 @@ Selection rules:
   -regex R              Any top-level decl whose name matches R — funcs,
                         methods (any receiver), vars, consts, types.
                         Grouped var/const/type blocks are split so only
-                        the matching specs move; siblings stay behind.
-  -receiver T           Type T and all its methods (bundled move).
+                        the matching specs are selected; siblings stay behind.
+  -receiver T           Type T and all its methods (copy by default; move with -move).
   -receiver T -regex R  Only methods of T matching R (type stays).
 
 At least one of -regex or -receiver is required.
@@ -83,13 +83,13 @@ Examples:
   sflit -source small.go -regex '^Filter' -sink big.go -move
 
 Other:
-  -v, -version   Print version information
+  -v, -version, --version  Print version information
   --tool-schema  Print JSON tool definition with examples (for agent integration)
 
 Exit codes:
   0  Success
-  1  Runtime error (collision, package mismatch, parse error)
-  2  Flag/usage error
+  1  Operation error (collision, package mismatch, parse error, no matches, write error)
+  2  Flag/usage error (invalid flags or missing required arguments)
 ```
 
 
@@ -108,7 +108,7 @@ schema source.
 
 ### Guarantees
 
-- On collision (a moved name already exists in the sink), `sflit` bails before writing.
+- On collision (a selected name already exists in the sink), `sflit` bails before writing.
 - On package mismatch (sink's package differs from source's), `sflit` bails before writing.
-- On move, source and sink are written together via temp-file + rename: a crash leaves both files valid.
+- On copy, only the sink is written; on move, source and sink are written via temp-file + rename.
 - Doc comments and `//go:` directives attached to a decl travel with it.

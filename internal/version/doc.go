@@ -1,2 +1,2 @@
-// Package version exposes the gojur build version string.
+// Package version exposes build version information from Go build metadata.
 package version

@@ -4,13 +4,14 @@
 // vars, consts) between files with semantic accuracy: source and sink are
 // parsed to AST, matching declarations are selected, the plan is validated
 // (package match, no name collisions), and files are reprinted through
-// gofmt with imports updated via golang.org/x/tools/imports.
+// gofmt with imports updated via golang.org/x/tools/imports in written files.
 //
 // Selection is driven by [Config]:
 //   - Regex: matches any top-level declaration name (funcs, methods on any
 //     receiver, vars, consts, types). Grouped var/const/type blocks are
-//     split so only matching specs move.
-//   - Receiver: matches a type and all its methods (bundled move).
+//     split so only matching specs are selected.
+//   - Receiver: matches a type and all its methods (copy by default; move
+//     with Config.Move).
 //   - Regex + Receiver: restricts to methods of Receiver whose name matches.
 //
 // Entry points:
@@ -24,6 +25,7 @@ package splitter
 
 import (
 	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -160,6 +162,10 @@ func RunCLI(args []string, _ io.Reader, stdout io.Writer, stderr io.Writer) int 
 	res, err := Run(cfg)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "sflit:", err)
+		var usageErr UsageError
+		if errors.As(err, &usageErr) {
+			return 2
+		}
 		return 1
 	}
 	if jsonOutput {
