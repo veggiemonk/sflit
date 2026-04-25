@@ -1,6 +1,6 @@
 # Regex matches nothing. Expect error.
 ! exec sflit -source a.go -sink b.go -regex '^Nothing'
-stderr 'no decls'
+stderr 'no declarations matched in a.go for -regex "\^Nothing"'
 
 -- a.go --
 package p

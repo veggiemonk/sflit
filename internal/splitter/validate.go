@@ -1,10 +1,10 @@
 package splitter
 
 import (
-	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
+	"strings"
 )
 
 // declKeys returns stable name keys for collision detection and for
@@ -65,18 +65,33 @@ func receiverBaseName(expr ast.Expr) string {
 	return ""
 }
 
+func selectionSummary(cfg Config) string {
+	parts := make([]string, 0, 2)
+	if cfg.Receiver != "" {
+		parts = append(parts, fmt.Sprintf("-receiver %q", cfg.Receiver))
+	}
+	if cfg.Regex != "" {
+		parts = append(parts, fmt.Sprintf("-regex %q", cfg.Regex))
+	}
+	return strings.Join(parts, " ")
+}
+
 // validatePlan checks invariants before any file is written. origSink is the
 // sink file as loaded from disk (may be nil); origSrc is the source file.
 func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 	// Empty selection: plan's sink has no decls appended beyond the original.
 	if len(plan.SinkFile.Decls) == plan.OrigSinkDeclCount {
-		return errors.New("no decls matched the selection criteria")
+		selection := plan.Selection
+		if selection == "" {
+			selection = "selection criteria"
+		}
+		return fmt.Errorf("no declarations matched in %s for %s", plan.SrcPath, selection)
 	}
 	// Package mismatch.
 	if origSink != nil && origSink.Name.Name != origSrc.Name.Name {
 		return fmt.Errorf(
-			"sink package %q does not match source package %q",
-			origSink.Name.Name, origSrc.Name.Name,
+			"sink %s has package %q, but source %s has package %q",
+			plan.SinkPath, origSink.Name.Name, plan.SrcPath, origSrc.Name.Name,
 		)
 	}
 	// Collisions: keys from the appended tail against keys from the pre-existing head.
@@ -89,7 +104,11 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 	for i := plan.OrigSinkDeclCount; i < len(plan.SinkFile.Decls); i++ {
 		for _, k := range declKeys(plan.SinkFile.Decls[i]) {
 			if existing[k] {
-				return fmt.Errorf("name collision in sink: %s already exists", k)
+				return fmt.Errorf(
+					"cannot write to %s: declaration %s already exists in sink",
+					plan.SinkPath,
+					k,
+				)
 			}
 		}
 	}

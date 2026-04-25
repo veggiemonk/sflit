@@ -11,7 +11,7 @@ cmp small.go expected_small.go
 # -json still prints errors to stderr on failure, no JSON on stdout.
 ! exec sflit -source big.go -sink small.go -regex '^NoMatch' -json
 ! stdout '.'
-stderr 'no decls matched'
+stderr 'no declarations matched in big.go for -regex "\^NoMatch"'
 
 -- big.go --
 package p

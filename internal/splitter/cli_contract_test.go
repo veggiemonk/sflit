@@ -2,6 +2,7 @@ package splitter
 
 import (
 	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -58,6 +59,66 @@ func TestRunCLI_RuntimeErrorsExit1(t *testing.T) {
 	}
 	if !strings.Contains(stderr.String(), "missing.go") {
 		t.Fatalf("stderr = %q, want missing source path", stderr.String())
+	}
+}
+
+func TestRunCLI_NoMatchIncludesSourceAndSelection(t *testing.T) {
+	dir := t.TempDir()
+	source := dir + "/a.go"
+	sink := dir + "/b.go"
+	writeFileForCLITest(t, source, "package p\nfunc Foo(){}\n")
+
+	var stdout, stderr bytes.Buffer
+	got := RunCLI([]string{"-source", source, "-sink", sink, "-regex", "Nope"}, nil, &stdout, &stderr)
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1; stderr:\n%s", got, stderr.String())
+	}
+	want := `sflit: no declarations matched in ` + source + ` for -regex "Nope"`
+	if strings.TrimSpace(stderr.String()) != want {
+		t.Fatalf("stderr = %q, want %q", strings.TrimSpace(stderr.String()), want)
+	}
+}
+
+func TestRunCLI_PackageMismatchIncludesPathsAndPackages(t *testing.T) {
+	dir := t.TempDir()
+	source := dir + "/a.go"
+	sink := dir + "/b.go"
+	writeFileForCLITest(t, source, "package p\nfunc Foo(){}\n")
+	writeFileForCLITest(t, sink, "package q\nfunc Bar(){}\n")
+
+	var stdout, stderr bytes.Buffer
+	got := RunCLI([]string{"-source", source, "-sink", sink, "-regex", "Foo"}, nil, &stdout, &stderr)
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1; stderr:\n%s", got, stderr.String())
+	}
+	want := `sflit: sink ` + sink + ` has package "q", but source ` + source + ` has package "p"`
+	if strings.TrimSpace(stderr.String()) != want {
+		t.Fatalf("stderr = %q, want %q", strings.TrimSpace(stderr.String()), want)
+	}
+}
+
+func TestRunCLI_CollisionIncludesSinkAndName(t *testing.T) {
+	dir := t.TempDir()
+	source := dir + "/a.go"
+	sink := dir + "/b.go"
+	writeFileForCLITest(t, source, "package p\nfunc Foo(){}\n")
+	writeFileForCLITest(t, sink, "package p\nfunc Foo(){}\n")
+
+	var stdout, stderr bytes.Buffer
+	got := RunCLI([]string{"-source", source, "-sink", sink, "-regex", "Foo"}, nil, &stdout, &stderr)
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1; stderr:\n%s", got, stderr.String())
+	}
+	want := `sflit: cannot write to ` + sink + `: declaration Foo already exists in sink`
+	if strings.TrimSpace(stderr.String()) != want {
+		t.Fatalf("stderr = %q, want %q", strings.TrimSpace(stderr.String()), want)
+	}
+}
+
+func writeFileForCLITest(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }
 

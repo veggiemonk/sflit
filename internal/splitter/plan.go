@@ -11,6 +11,7 @@ type Plan struct {
 	SinkFile          *ast.File
 	SrcPath           string
 	SinkPath          string
+	Selection         string
 	OrigSinkDeclCount int // number of decls in sink before extracted were appended
 	SinkIsNew         bool
 	Move              bool

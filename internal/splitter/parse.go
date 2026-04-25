@@ -31,7 +31,7 @@ func parseGoFileIfExists(path string) (*token.FileSet, *ast.File, error) {
 		if os.IsNotExist(err) {
 			return nil, nil, nil
 		}
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("stat %s: %w", path, err)
 	}
 	return parseGoFile(path)
 }

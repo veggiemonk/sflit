@@ -111,7 +111,7 @@ func TestRun_CollisionBail(t *testing.T) {
 	sinkBefore, _ := os.ReadFile(filepath.Clean(sink))
 
 	_, err := Run(Config{Source: src, Sink: sink, Regex: "^Foo", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "collision") {
+	if err == nil || !strings.Contains(err.Error(), "declaration Foo already exists in sink") {
 		t.Fatalf("want collision err, got %v", err)
 	}
 	srcAfter, _ := os.ReadFile(filepath.Clean(src))

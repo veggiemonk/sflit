@@ -1,9 +1,9 @@
 # Collision: sink already has a func with the same name.
-# Expect: non-zero exit, stderr contains "collision", files unchanged.
+# Expect: non-zero exit, stderr identifies the sink and declaration, files unchanged.
 cp a.go a_before.go
 cp b.go b_before.go
 ! exec sflit -source a.go -sink b.go -regex '^Foo' -move
-stderr 'collision'
+stderr 'cannot write to b.go: declaration Foo already exists in sink'
 cmp a.go a_before.go
 cmp b.go b_before.go
 

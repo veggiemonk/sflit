@@ -67,6 +67,7 @@ func Run(cfg Config) (Result, error) {
 
 	extracted := extractMatches(fset, src, matches)
 	plan := buildPlan(fset, cfg.Source, cfg.Sink, src, origSink, extracted, cfg.Move)
+	plan.Selection = selectionSummary(cfg)
 	if err := validatePlan(plan, origSink, src); err != nil {
 		return Result{}, err
 	}
@@ -79,7 +80,7 @@ func Run(cfg Config) (Result, error) {
 	// On copy, only write the sink.
 	if !cfg.Move {
 		if err := writeSingle(cfg.Sink, sinkBytes); err != nil {
-			return Result{}, err
+			return Result{}, fmt.Errorf("write sink %s: %w", cfg.Sink, err)
 		}
 		log.Info("wrote file", "path", cfg.Sink, "bytes", len(sinkBytes))
 	} else {
