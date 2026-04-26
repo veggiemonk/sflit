@@ -6,7 +6,7 @@ import "encoding/json"
 func toolSchemaJSON() []byte {
 	schema := map[string]any{
 		"name":        "sflit",
-		"description": "Semantic file splitter for Go. Moves or copies top-level declarations (functions, methods, types, vars, consts) between files. AST is re-parsed and reprinted through gofmt; imports are updated in written files. Partial moves from iota const blocks are rejected. Comments associated with moved declarations travel with them.",
+		"description": "Semantic file splitter for Go. Moves or copies top-level declarations (functions, methods, types, vars, consts) between files. AST is re-parsed and reprinted through gofmt; imports are updated in written files. Moves that risk silently changing semantics are conservatively rejected. Comments associated with moved declarations travel with them.",
 		"parameters": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -43,7 +43,12 @@ func toolSchemaJSON() []byte {
 				{"required": []string{"receiver"}},
 			},
 		},
-		"iota_const_blocks": "Partial moves from a const block whose first spec uses iota are rejected. Move the whole block or refactor it manually before splitting.",
+		"blocked_moves": []string{
+			"init functions, because moving them may change package initialization order",
+			"partial moves from iota const blocks",
+			"partial moves from const blocks with implicit expressions",
+			"partial moves from multi-name var/const specs unless values map one-to-one to names",
+		},
 		"selection_rules": []map[string]string{
 			{
 				"flags":    "-regex R",

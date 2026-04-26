@@ -5,8 +5,8 @@
 // Comments associated with moved declarations travel with them, including doc
 // comments, //go: directives, leading comments, in-body comments, inline
 // comments, and trailing orphan comments when the matched declaration is at the
-// end of the file. Partial moves from an iota const block are rejected; move the
-// whole block or refactor it manually before splitting.
+// end of the file. Moves that can silently change semantics, such as init
+// functions and partial implicit const blocks, are rejected.
 //
 // Usage:
 //

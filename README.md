@@ -70,9 +70,13 @@ Selection rules:
 
 At least one of -regex or -receiver is required.
 
-Iota const blocks:
-  Partial moves from a const block whose first spec uses iota are rejected.
-  Move the whole block or refactor the constants manually before splitting.
+Blocked moves:
+  - init functions are rejected because moving them may change package
+    initialization order.
+  - Partial moves from const blocks with iota or implicit expressions are
+    rejected; move the whole block or refactor constants manually first.
+  - Partial moves from multi-name var/const specs are rejected unless each
+    name has a corresponding explicit value.
 
 Comments:
   Comments associated with moved declarations travel with them, including
@@ -122,5 +126,5 @@ schema source.
 - On collision (a selected Go package-namespace name already exists in the sink), `sflit` bails before writing.
 - On package mismatch (sink's package differs from source's), `sflit` bails before writing.
 - On copy, only the sink is written; on move, source and sink are written via temp-file + rename.
-- Partial moves from an `iota` const block are rejected; move the whole block or refactor it manually first.
+- `sflit` rejects moves that are likely to change semantics silently: `init` functions, partial `iota`/implicit const blocks, and unsafe partial multi-name value specs.
 - Comments associated with moved declarations travel with them: doc comments, `//go:` directives, free-floating lead comments, in-body comments, inline spec/statement comments, and trailing orphan comments when the matched declaration is at the end of the file.
