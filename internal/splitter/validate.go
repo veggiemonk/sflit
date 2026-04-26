@@ -68,6 +68,9 @@ func collisionKeys(d ast.Decl) []string {
 				keys = append(keys, ss.Name.Name)
 			case *ast.ValueSpec:
 				for _, n := range ss.Names {
+					if n.Name == "_" {
+						continue
+					}
 					keys = append(keys, n.Name)
 				}
 			}
@@ -124,6 +127,20 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 			plan.SinkPath, origSink.Name.Name, plan.SrcPath, origSrc.Name.Name,
 		)
 	}
+	if generated, err := isGeneratedFile(plan.SrcPath); err != nil {
+		return err
+	} else if generated {
+		return fmt.Errorf("cannot split generated file %s: generated files should be changed at the generator source", plan.SrcPath)
+	}
+	if fileImportsC(origSrc) {
+		return fmt.Errorf("cannot split cgo file %s: import \"C\" and its preamble are file-sensitive", plan.SrcPath)
+	}
+	if fileHasDotImport(origSrc) {
+		return fmt.Errorf("cannot split file with dot imports %s: dot imports obscure dependencies; refactor to qualified imports first", plan.SrcPath)
+	}
+	if err := validateBuildConstraints(plan); err != nil {
+		return err
+	}
 	// Collisions: Go package-namespace keys from the appended tail against keys
 	// from the pre-existing head. This prevents writing invalid Go such as a
 	// sink that already has `var Foo` receiving `func Foo`.
@@ -145,4 +162,35 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 		}
 	}
 	return nil
+}
+
+func validateBuildConstraints(plan Plan) error {
+	srcConstraints := buildConstraintLinesFromAST(plan.SrcFile)
+	if plan.SinkIsNew {
+		if len(srcConstraints) == 0 {
+			return nil
+		}
+		return fmt.Errorf(
+			"cannot move build-constrained declarations into sink with different build constraints: new sink without matching constraints for source %s and sink %s",
+			plan.SrcPath,
+			plan.SinkPath,
+		)
+	}
+
+	sinkConstraints := buildConstraintLinesFromAST(plan.OrigSink)
+	if sameStringSlice(srcConstraints, sinkConstraints) {
+		return nil
+	}
+	if len(srcConstraints) == 0 {
+		return fmt.Errorf(
+			"cannot move declarations into sink with different build constraints: source %s is unconstrained but sink %s has build constraints",
+			plan.SrcPath,
+			plan.SinkPath,
+		)
+	}
+	return fmt.Errorf(
+		"cannot move build-constrained declarations into sink with different build constraints: source %s and sink %s have different build constraints",
+		plan.SrcPath,
+		plan.SinkPath,
+	)
 }

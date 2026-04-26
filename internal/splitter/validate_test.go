@@ -45,6 +45,17 @@ func TestValidate_Collision(t *testing.T) {
 	}
 }
 
+func TestValidate_BlankIdentifierDoesNotCollide(t *testing.T) {
+	fset, src := mustParse(t, "package p\nvar _ interface{} = nil\n")
+	_, sink := mustParse(t, "package p\nvar _ interface{} = nil\n")
+	ms, _ := selectDecls(src, Config{Regex: "^_$"})
+	ex := extractMatches(fset, src, ms)
+	plan := buildPlan(fset, nil, "src.go", "sink.go", src, sink, ex, false)
+	if err := validatePlan(plan, sink, src); err != nil {
+		t.Fatalf("blank identifiers should not collide, got %v", err)
+	}
+}
+
 func TestValidate_CollisionUsesGoPackageNamespace(t *testing.T) {
 	tests := []struct {
 		name string

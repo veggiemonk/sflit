@@ -1,0 +1,48 @@
+# Blank identifier declarations do not bind package names, so interface
+# assertions using var _ should not collide.
+
+exec sflit -source big.go -sink sink.go -regex '^_$' -move
+cmp sink.go expected_sink.go
+cmp big.go expected_big.go
+
+-- big.go --
+package p
+
+import "io"
+
+type B struct{}
+
+func (*B) Read([]byte) (int, error) { return 0, nil }
+
+var _ io.Reader = (*B)(nil)
+-- sink.go --
+package p
+
+import "fmt"
+
+type A struct{}
+
+func (*A) String() string { return "" }
+
+var _ fmt.Stringer = (*A)(nil)
+-- expected_big.go --
+package p
+
+type B struct{}
+
+func (*B) Read([]byte) (int, error) { return 0, nil }
+-- expected_sink.go --
+package p
+
+import (
+	"fmt"
+	"io"
+)
+
+type A struct{}
+
+func (*A) String() string { return "" }
+
+var _ fmt.Stringer = (*A)(nil)
+
+var _ io.Reader = (*B)(nil)

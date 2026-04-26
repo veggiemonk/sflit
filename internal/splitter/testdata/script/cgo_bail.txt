@@ -1,0 +1,26 @@
+# cgo files are rejected conservatively. The preamble before import "C" is
+# file-sensitive and should not be split mechanically.
+
+! exec sflit -source cgo.go -sink small.go -regex '^UseC$' -move
+stderr 'cannot split cgo file'
+cmp cgo.go expected_cgo.go
+! exists small.go
+
+-- cgo.go --
+package p
+
+/*
+#include <stdlib.h>
+*/
+import "C"
+
+func UseC() int { return int(C.size_t(1)) }
+-- expected_cgo.go --
+package p
+
+/*
+#include <stdlib.h>
+*/
+import "C"
+
+func UseC() int { return int(C.size_t(1)) }

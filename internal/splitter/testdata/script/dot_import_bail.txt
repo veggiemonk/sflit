@@ -1,0 +1,20 @@
+# Dot imports obscure where identifiers come from. goimports cannot reliably
+# recreate them for moved declarations, so reject dot-import source files.
+
+! exec sflit -source dot.go -sink small.go -regex '^Area$' -move
+stderr 'cannot split file with dot imports'
+cmp dot.go expected_dot.go
+! exists small.go
+
+-- dot.go --
+package p
+
+import . "math"
+
+func Area(r float64) float64 { return Pi * r * r }
+-- expected_dot.go --
+package p
+
+import . "math"
+
+func Area(r float64) float64 { return Pi * r * r }

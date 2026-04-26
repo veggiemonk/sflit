@@ -37,6 +37,10 @@ Blocked moves:
     rejected; move the whole block or refactor constants manually first.
   - Partial moves from multi-name var/const specs are rejected unless each
     name has a corresponding explicit value.
+  - Generated source files are rejected.
+  - Files with build constraints can only move into sinks with identical
+    build constraints.
+  - Files using cgo import "C" or dot imports are rejected.
 
 Comments:
   Comments associated with moved declarations travel with them, including

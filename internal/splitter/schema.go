@@ -48,6 +48,10 @@ func toolSchemaJSON() []byte {
 			"partial moves from iota const blocks",
 			"partial moves from const blocks with implicit expressions",
 			"partial moves from multi-name var/const specs unless values map one-to-one to names",
+			"generated source files",
+			"moves between source and sink files with different or absent build constraints on either side",
+			"cgo source files using import C",
+			"source files with dot imports",
 		},
 		"selection_rules": []map[string]string{
 			{
@@ -101,7 +105,7 @@ func toolSchemaJSON() []byte {
 		},
 		"exit_codes": map[string]string{
 			"0": "Success",
-			"1": "Operation error (collision, package mismatch, parse error, no matches, write error)",
+			"1": "Operation error (collision, package mismatch, build-constraint mismatch, generated/cgo/dot-import source, parse error, no matches, write error)",
 			"2": "Flag/usage error (invalid flags or missing required arguments)",
 		},
 	}

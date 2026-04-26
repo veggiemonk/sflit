@@ -6,7 +6,9 @@
 // comments, //go: directives, leading comments, in-body comments, inline
 // comments, and trailing orphan comments when the matched declaration is at the
 // end of the file. Moves that can silently change semantics, such as init
-// functions and partial implicit const blocks, are rejected.
+// functions and partial implicit const blocks, are rejected. File-sensitive
+// cases such as generated files, build constraints, cgo, and dot imports are
+// rejected rather than rewritten heuristically.
 //
 // Usage:
 //
@@ -26,7 +28,8 @@
 //	sflit -source big.go -receiver MyStruct -regex '^Filter' -sink my_struct_filter.go -move
 //
 // Exit codes: 0 success, 1 operation error (collision, package mismatch,
-// parse error, no matches, write error), 2 flag/usage error.
+// build-constraint mismatch, generated/cgo/dot-import source, parse error, no
+// matches, write error), 2 flag/usage error.
 //
 // See [github.com/veggiemonk/sflit/internal/splitter] for the internal API.
 package main
