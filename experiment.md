@@ -4,9 +4,13 @@ Format: `invocation | exit | notes`
 
 ## app.go → 11 files (source split)
 
+Historical run note: entries mentioning regex-only method skips describe pre-`cf6841e`
+behavior. Current `-regex` matches funcs, methods by method name, vars, consts,
+and types.
+
 - `-sink session_switch.go -receiver App -regex '^switchSession$' -move` — OK.
-- `-sink new.go -regex '^(New|defaultThemes|defaultUISource|defaultCellRegistry|defaultBridge|resolveModels)$' -move` — OK for free funcs. Methods skipped silently (expected per help).
-- `-sink init.go -regex '^(Init|bannerCmd|BannerCmdForTest|emit|emitBlank)$' -move` — matched free funcs (emit, emitBlank, bannerCmd, BannerCmdForTest). **Init (method) skipped with no warning** — quirk worth surfacing. Follow-up `-receiver App -regex '^Init$'` picked it up.
+- `-sink new.go -regex '^(New|defaultThemes|defaultUISource|defaultCellRegistry|defaultBridge|resolveModels)$' -move` — OK for free funcs in the historical run; current `-regex` also matches methods by method name.
+- `-sink init.go -regex '^(Init|bannerCmd|BannerCmdForTest|emit|emitBlank)$' -move` — historical run matched free funcs only; current behavior also matches the `Init` method, so the follow-up `-receiver App -regex '^Init$'` is no longer needed.
 - `-sink keys.go -receiver App -regex '^(globalKey|toggleThinking|toggleToolOutput|cycleModel)$' -move` — OK.
 - `-sink update.go -receiver App -regex '^(Update|forwardToSubModels)$' -move` — OK.
 - `-sink view.go -receiver App -regex '^View$' -move` — OK.
@@ -17,8 +21,8 @@ Format: `invocation | exit | notes`
 - `-sink modal_choice.go -receiver App -regex '^handleModalChoice' -move` — OK.
 - `-sink stream.go -receiver pendingToolCall -move` — OK (type with no methods).
 - `-sink new.go -receiver Config -move` — OK (type with no methods).
-- `-sink test_shims.go -regex 'ForTest$' -move` — matched free funcs only.
-- `-sink test_shims.go -receiver App -regex 'ForTest$' -move` — picked up methods.
+- `-sink test_shims.go -regex 'ForTest$' -move` — historical run matched free funcs only; current behavior also matches methods by method name.
+- `-sink test_shims.go -receiver App -regex 'ForTest$' -move` — historical follow-up for methods; no longer needed after `cf6841e` unless you want to restrict matches to `App` methods.
 
 ## Quirks found
 

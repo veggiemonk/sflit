@@ -6,7 +6,7 @@ import "encoding/json"
 func toolSchemaJSON() []byte {
 	schema := map[string]any{
 		"name":        "sflit",
-		"description": "Semantic file splitter for Go. Moves or copies top-level declarations (functions, methods, types, vars, consts) between files. AST is re-parsed through gofmt; imports are updated in written files.",
+		"description": "Semantic file splitter for Go. Moves or copies top-level declarations (functions, methods, types, vars, consts) between files. AST is re-parsed and reprinted through gofmt; imports are updated in written files. Partial moves from iota const blocks are rejected. Comments associated with moved declarations travel with them.",
 		"parameters": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -16,15 +16,15 @@ func toolSchemaJSON() []byte {
 				},
 				"sink": map[string]any{
 					"type":        "string",
-					"description": "Destination Go file path; created if absent, appended if present (required)",
+					"description": "Destination Go file path; created if absent, merged and re-rendered with selected declarations if present (required)",
 				},
 				"regex": map[string]any{
 					"type":        "string",
-					"description": "Regex matched against top-level declaration names — funcs, methods (any receiver), vars, consts, types. Grouped var/const/type blocks are split so only matching specs are selected. Combine with -receiver to restrict to methods of one type.",
+					"description": "Regex matched against top-level declaration names — funcs, methods (method name only, any receiver), vars, consts, types. Grouped var/const/type blocks are split so only matching specs are selected. Combine with -receiver to restrict to methods of one type.",
 				},
 				"receiver": map[string]any{
 					"type":        "string",
-					"description": "Receiver type name. Alone: selects the type plus every method (copy by default; move with -move). With -regex: restricts to methods of that type matching the regex.",
+					"description": "Receiver type name. Alone: selects the type declaration if present plus every method (copy by default; move with -move). With -regex: restricts to methods of that type matching the regex.",
 				},
 				"move": map[string]any{
 					"type":        "boolean",
@@ -43,20 +43,21 @@ func toolSchemaJSON() []byte {
 				{"required": []string{"receiver"}},
 			},
 		},
+		"iota_const_blocks": "Partial moves from a const block whose first spec uses iota are rejected. Move the whole block or refactor it manually before splitting.",
 		"selection_rules": []map[string]string{
 			{
 				"flags":    "-regex R",
-				"behavior": "Any top-level decl whose name matches R (funcs, methods, vars, consts, types). Grouped var/const/type blocks are split so only matching specs are selected.",
+				"behavior": "Any top-level decl whose name matches R (funcs, methods by method name only, vars, consts, types). Grouped var/const/type blocks are split so only matching specs are selected.",
 			},
 			{
 				"flags":    "-receiver T",
-				"behavior": "Type T and all its methods (copy by default; move with -move)",
+				"behavior": "Type T if present and all its methods (copy by default; move with -move)",
 			},
 			{"flags": "-receiver T -regex R", "behavior": "Only methods of T matching R (type stays)"},
 		},
 		"examples": []map[string]any{
 			{
-				"description": "Copy functions matching a regex",
+				"description": "Copy declarations matching a regex",
 				"command":     "sflit -source big.go -regex '^Filter' -sink filter.go -json",
 				"output": map[string]any{
 					"source":                 "big.go",
@@ -83,9 +84,9 @@ func toolSchemaJSON() []byte {
 			},
 			{
 				"description": "Undo a move (move it back)",
-				"command":     "sflit -source my_struct.go -regex '^Filter' -sink big.go -move -json",
+				"command":     "sflit -source filter.go -regex '^Filter' -sink big.go -move -json",
 				"output": map[string]any{
-					"source":                 "my_struct.go",
+					"source":                 "filter.go",
 					"sink":                   "big.go",
 					"move":                   true,
 					"matched":                []string{"FilterByName"},

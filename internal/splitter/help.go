@@ -12,7 +12,7 @@ Usage:
 
 Flags:
   -source    string  Source Go file (required)
-  -sink      string  Destination Go file, created if absent (required)
+  -sink      string  Destination Go file; created if absent, re-rendered if present (required)
   -regex     string  Regex matched against declaration names
   -receiver  string  Receiver type name
   -move              Delete matched decls from source after writing (default: copy)
@@ -21,16 +21,27 @@ Flags:
 
 Selection rules:
   -regex R              Any top-level decl whose name matches R — funcs,
-                        methods (any receiver), vars, consts, types.
-                        Grouped var/const/type blocks are split so only
-                        the matching specs are selected; siblings stay behind.
-  -receiver T           Type T and all its methods (copy by default; move with -move).
+                        methods (matched by method name only, any receiver),
+                        vars, consts, types. Grouped var/const/type blocks
+                        are split so only the matching specs are selected;
+                        siblings stay behind.
+  -receiver T           Type T if present and all its methods (copy by default; move with -move).
   -receiver T -regex R  Only methods of T matching R (type stays).
 
 At least one of -regex or -receiver is required.
 
+Iota const blocks:
+  Partial moves from a const block whose first spec uses iota are rejected.
+  Move the whole block or refactor the constants manually before splitting.
+
+Comments:
+  Comments associated with moved declarations travel with them, including
+  doc comments, //go: directives, free-floating lead comments, in-body
+  comments, inline spec/statement comments, and trailing orphan comments
+  when the matched declaration is at the end of the file.
+
 Examples:
-  # Copy functions matching a regex
+  # Copy declarations matching a regex
   sflit -source big.go -regex '^Filter' -sink filter.go
 
   # Move a type and all its methods

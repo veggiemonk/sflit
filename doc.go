@@ -2,6 +2,11 @@
 //
 // sflit moves or copies top-level Go declarations between files. The AST is
 // re-parsed and reprinted through gofmt; imports are updated in written files.
+// Comments associated with moved declarations travel with them, including doc
+// comments, //go: directives, leading comments, in-body comments, inline
+// comments, and trailing orphan comments when the matched declaration is at the
+// end of the file. Partial moves from an iota const block are rejected; move the
+// whole block or refactor it manually before splitting.
 //
 // Usage:
 //
@@ -11,7 +16,7 @@
 //
 // Examples:
 //
-//	# Copy functions matching a regex
+//	# Copy declarations matching a regex
 //	sflit -source big.go -regex '^Filter' -sink filter.go
 //
 //	# Move a type and all its methods
@@ -23,5 +28,5 @@
 // Exit codes: 0 success, 1 operation error (collision, package mismatch,
 // parse error, no matches, write error), 2 flag/usage error.
 //
-// See [github.com/veggiemonk/sflit/internal/splitter] for the library API.
+// See [github.com/veggiemonk/sflit/internal/splitter] for the internal API.
 package main

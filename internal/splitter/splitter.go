@@ -19,8 +19,12 @@
 //   - [RunCLI] — CLI entry point invoked by the sflit binary.
 //
 // Guarantees on [Config.Move]: source and sink are written via temp-file +
-// rename so a crash leaves both files valid. Doc comments and //go:
-// directives travel with the decl they annotate.
+// rename so a crash leaves both files valid. Comments associated with moved
+// declarations travel with them, including doc comments, //go: directives,
+// leading comments, in-body comments, inline comments, and trailing orphan
+// comments when the matched declaration is at the end of the file. Partial moves
+// from an iota const block are rejected; move the whole block or refactor it
+// manually before splitting.
 package splitter
 
 import (

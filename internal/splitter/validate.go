@@ -7,8 +7,7 @@ import (
 	"strings"
 )
 
-// declKeys returns stable name keys for collision detection and for
-// the JSON Matched report.
+// declKeys returns stable name keys for the JSON Matched report.
 //
 //	plain func:   ["Foo"]
 //	method:       ["T.Foo"] (receiver base type)
@@ -39,6 +38,37 @@ func declKeys(d ast.Decl) []string {
 				}
 				for _, n := range ss.Names {
 					keys = append(keys, kind+" "+n.Name)
+				}
+			}
+		}
+		return keys
+	}
+	return nil
+}
+
+// collisionKeys returns names in the namespaces that matter for duplicate
+// declarations in a Go package. Top-level funcs, types, vars, and consts share
+// the package block, while methods are keyed by receiver type plus method name.
+func collisionKeys(d ast.Decl) []string {
+	switch x := d.(type) {
+	case *ast.FuncDecl:
+		if x.Recv == nil || len(x.Recv.List) == 0 {
+			return []string{x.Name.Name}
+		}
+		recv := receiverBaseName(x.Recv.List[0].Type)
+		if recv == "" {
+			return nil
+		}
+		return []string{recv + "." + x.Name.Name}
+	case *ast.GenDecl:
+		var keys []string
+		for _, s := range x.Specs {
+			switch ss := s.(type) {
+			case *ast.TypeSpec:
+				keys = append(keys, ss.Name.Name)
+			case *ast.ValueSpec:
+				for _, n := range ss.Names {
+					keys = append(keys, n.Name)
 				}
 			}
 		}
@@ -94,15 +124,17 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 			plan.SinkPath, origSink.Name.Name, plan.SrcPath, origSrc.Name.Name,
 		)
 	}
-	// Collisions: keys from the appended tail against keys from the pre-existing head.
+	// Collisions: Go package-namespace keys from the appended tail against keys
+	// from the pre-existing head. This prevents writing invalid Go such as a
+	// sink that already has `var Foo` receiving `func Foo`.
 	existing := make(map[string]bool)
 	for i := range plan.OrigSinkDeclCount {
-		for _, k := range declKeys(plan.SinkFile.Decls[i]) {
+		for _, k := range collisionKeys(plan.SinkFile.Decls[i]) {
 			existing[k] = true
 		}
 	}
 	for i := plan.OrigSinkDeclCount; i < len(plan.SinkFile.Decls); i++ {
-		for _, k := range declKeys(plan.SinkFile.Decls[i]) {
+		for _, k := range collisionKeys(plan.SinkFile.Decls[i]) {
 			if existing[k] {
 				return fmt.Errorf(
 					"cannot write to %s: declaration %s already exists in sink",

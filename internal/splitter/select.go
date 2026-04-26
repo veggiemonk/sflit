@@ -1,10 +1,10 @@
 package splitter
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"regexp"
-	"strconv"
 )
 
 type MatchKind int
@@ -75,7 +75,11 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 				}
 			}
 		case *ast.GenDecl:
-			out = append(out, selectGenDecl(x, cfg, re)...)
+			matches, err := selectGenDecl(x, cfg, re)
+			if err != nil {
+				return nil, err
+			}
+			out = append(out, matches...)
 		}
 	}
 	return out, nil
@@ -85,18 +89,18 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 // Returns a []Match. Grouped decls with partial matches are split: the
 // source-side GenDecl is mutated to drop matched specs, and synthetic
 // single-spec GenDecls are emitted for the sink.
-func selectGenDecl(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
+func selectGenDecl(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) ([]Match, error) {
 	switch gd.Tok {
 	case token.TYPE:
-		return selectTypeSpecs(gd, cfg, re)
+		return selectTypeSpecs(gd, cfg, re), nil
 	case token.VAR, token.CONST:
 		if re == nil {
 			// Receiver-only mode never matches vars/consts.
-			return nil
+			return nil, nil
 		}
 		return selectValueSpecs(gd, re)
 	}
-	return nil
+	return nil, nil
 }
 
 // selectTypeSpecs handles `type (...)` groups. Two paths:
@@ -162,10 +166,10 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 //     so removeDecls strips it from the source entirely;
 //  3. partial match → emit synthetic per-name/per-spec matches; mutate
 //     the source gd to drop moved specs/names.
-func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) []Match {
+func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
 	if isIotaConstBlock(gd) {
-		if m, ok := selectIotaConstSpecs(gd, re); ok {
-			return m
+		if err := rejectPartialIotaConstMove(gd, re); err != nil {
+			return nil, err
 		}
 	}
 	type specMatch struct {
@@ -199,10 +203,10 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) []Match {
 		per = append(per, specMatch{spec: vs, names: nameIdx, fullyIn: fullyIn})
 	}
 	if !anyMatch {
-		return nil
+		return nil, nil
 	}
 	if allMatch {
-		return []Match{{Decl: gd, Kind: KindValueDecl}}
+		return []Match{{Decl: gd, Kind: KindValueDecl}}, nil
 	}
 
 	var out []Match
@@ -250,13 +254,13 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) []Match {
 		kept = append(kept, pm.spec)
 	}
 	gd.Specs = kept
-	return out
+	return out, nil
 }
 
 // isIotaConstBlock reports whether gd is a const block whose first
 // ValueSpec uses `iota` as its initializer. Subsequent specs in such a
-// block implicitly inherit the iota chain, so partial moves must
-// preserve spec offsets to keep semantic values stable.
+// block implicitly inherit the iota chain, so partial moves are rejected;
+// callers must move the whole block or refactor manually.
 func isIotaConstBlock(gd *ast.GenDecl) bool {
 	if gd.Tok != token.CONST || len(gd.Specs) == 0 {
 		return false
@@ -269,142 +273,27 @@ func isIotaConstBlock(gd *ast.GenDecl) bool {
 	return ok && id.Name == "iota"
 }
 
-// selectIotaConstSpecs handles a partial move out of an iota'd const
-// block. It returns (matches, true) when the call was handled here; a
-// false `ok` falls back to the generic selectValueSpecs path.
-//
-// Strategy:
-//   - Each moved spec materialises in the destination as an explicit
-//     `Name Type = literalIotaValue` so the destination compiles without
-//     reproducing the iota chain.
-//   - In the source, every moved spec is replaced by a `_` placeholder so
-//     the iota offsets of surviving specs are preserved verbatim.
-//   - When the anchor (index 0, the spec carrying `= iota`) is moved,
-//     leading `_` placeholders are stripped and the type+iota initializer
-//     is hoisted onto the first surviving spec — there is no surviving
-//     spec to act as anchor otherwise, and leading `_`s can collapse
-//     because the first spec defaults to iota=0 either way.
-//
-// All-match and no-match cases fall through with ok=false so the generic
-// path can pick them up unchanged (whole-gd move / no-op).
-func selectIotaConstSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, bool) {
-	moved := make([]bool, len(gd.Specs))
-	movedCount, totalSpecs := 0, 0
-	for i, s := range gd.Specs {
-		vs, ok := s.(*ast.ValueSpec)
-		if !ok {
-			return nil, false
-		}
-		totalSpecs++
-		if len(vs.Names) == 1 && re.MatchString(vs.Names[0].Name) {
-			moved[i] = true
-			movedCount++
-		}
-	}
-	if movedCount == 0 || movedCount == totalSpecs {
-		return nil, false
-	}
-
-	anchor, ok := gd.Specs[0].(*ast.ValueSpec)
-	if !ok {
-		return nil, false
-	}
-	anchorType := anchor.Type
-
-	destSpecs := make([]ast.Spec, 0, movedCount)
-	for i, s := range gd.Specs {
-		if !moved[i] {
-			continue
-		}
-		vs, ok := s.(*ast.ValueSpec)
-		if !ok {
-			return nil, false
-		}
-		destSpecs = append(destSpecs, &ast.ValueSpec{
-			Names:   vs.Names,
-			Type:    cloneTypeExpr(anchorType),
-			Values:  []ast.Expr{&ast.BasicLit{Kind: token.INT, Value: strconv.Itoa(i)}},
-			Doc:     vs.Doc,
-			Comment: vs.Comment,
-		})
-	}
-	synth := &ast.GenDecl{Tok: token.CONST, Specs: destSpecs}
-	if len(destSpecs) > 1 {
-		// Lparen/Rparen must be non-zero for the printer to emit the
-		// parenthesised form. Concrete positions don't matter — the
-		// synthetic renders via its own segment in renderFiles.
-		synth.Lparen = token.Pos(1)
-		synth.Rparen = token.Pos(2)
-	}
-
-	kept := make([]ast.Spec, 0, len(gd.Specs))
-	for i, s := range gd.Specs {
-		if moved[i] {
-			kept = append(kept, &ast.ValueSpec{Names: []*ast.Ident{ast.NewIdent("_")}})
-			continue
-		}
-		kept = append(kept, s)
-	}
-	if moved[0] {
-		firstReal := -1
-		for i, s := range kept {
-			vs, ok := s.(*ast.ValueSpec)
-			if !ok {
-				continue
-			}
-			if !isPlaceholder(vs) {
-				firstReal = i
-				break
-			}
-		}
-		if firstReal >= 0 {
-			kept = kept[firstReal:]
-			head, ok := kept[0].(*ast.ValueSpec)
-			if !ok {
-				return nil, false
-			}
-			head.Type = anchorType
-			head.Values = []ast.Expr{ast.NewIdent("iota")}
-		} else {
-			kept = nil
-		}
-	}
-	gd.Specs = kept
-
-	// Zero positions on the mutated gd so go/printer uses default spacing
-	// between specs: blank lines from the original layout would otherwise
-	// re-appear at each placeholder boundary, since `_` placeholders have
-	// no source position and stripped leading specs leave a Pos gap to
-	// Lparen.
-	resetGenDeclPositions(gd)
-
-	return []Match{{Decl: synth, Kind: KindValueDecl, Synthetic: true}}, true
-}
-
-func resetGenDeclPositions(gd *ast.GenDecl) {
-	gd.Lparen = token.NoPos
-	gd.Rparen = token.NoPos
+func rejectPartialIotaConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
+	totalNames := 0
+	matchedNames := 0
 	for _, s := range gd.Specs {
 		vs, ok := s.(*ast.ValueSpec)
 		if !ok {
 			continue
 		}
 		for _, n := range vs.Names {
-			n.NamePos = token.NoPos
+			totalNames++
+			if re.MatchString(n.Name) {
+				matchedNames++
+			}
 		}
 	}
-}
-
-func isPlaceholder(vs *ast.ValueSpec) bool {
-	return len(vs.Names) == 1 && vs.Names[0].Name == "_" && vs.Type == nil && len(vs.Values) == 0
-}
-
-func cloneTypeExpr(e ast.Expr) ast.Expr {
-	switch x := e.(type) {
-	case nil:
+	if matchedNames == 0 || matchedNames == totalNames {
 		return nil
-	case *ast.Ident:
-		return ast.NewIdent(x.Name)
 	}
-	return e
+	return fmt.Errorf(
+		"cannot partially move iota const block: selection matches %d of %d names; move the whole block or refactor it manually",
+		matchedNames,
+		totalNames,
+	)
 }

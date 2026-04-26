@@ -27,10 +27,10 @@ Entry format:
 
 ## Release tooling (goreleaser + tagged binaries)
 
-- **Context:** `internal/version` already exposes a version string; no
-  release pipeline wires tags → binaries.
-- **Why deferred:** not blocking any user today; version string is
-  populated from commit hash via `-ldflags`.
+- **Context:** `internal/version` reads Go build/VCS metadata; no release
+  pipeline wires tags → distributable binaries.
+- **Why deferred:** not blocking any user today; VCS metadata is available
+  from Go build info, but no tagged release artifact flow exists.
 - **Acceptance:** `.goreleaser.yaml` builds darwin/linux amd64+arm64
   artifacts on tag push; release workflow uploads them to GitHub
   Releases.
