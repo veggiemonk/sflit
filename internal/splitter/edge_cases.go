@@ -9,14 +9,6 @@ import (
 	"strings"
 )
 
-func buildConstraintLines(path string) ([]string, error) {
-	src, err := os.ReadFile(path)
-	if err != nil {
-		return nil, err
-	}
-	return buildConstraintLinesFromBytes(src), nil
-}
-
 func buildConstraintLinesFromAST(file *ast.File) []string {
 	if file == nil {
 		return nil
@@ -38,7 +30,7 @@ func buildConstraintLinesFromAST(file *ast.File) []string {
 
 func buildConstraintLinesFromBytes(src []byte) []string {
 	var lines []string
-	for _, line := range bytes.Split(src, []byte("\n")) {
+	for line := range bytes.SplitSeq(src, []byte("\n")) {
 		text := strings.TrimSpace(string(line))
 		if text == "" {
 			continue

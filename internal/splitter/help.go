@@ -67,7 +67,8 @@ Other:
 
 Exit codes:
   0  Success
-  1  Operation error (collision, package mismatch, parse error, no matches, write error)
+  1  Operation error (collision, package mismatch, build-constraint mismatch,
+     generated/cgo/dot-import source, parse error, no matches, write error)
   2  Flag/usage error (invalid flags or missing required arguments)
 `
 

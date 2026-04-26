@@ -130,13 +130,22 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 	if generated, err := isGeneratedFile(plan.SrcPath); err != nil {
 		return err
 	} else if generated {
-		return fmt.Errorf("cannot split generated file %s: generated files should be changed at the generator source", plan.SrcPath)
+		return fmt.Errorf(
+			"cannot split generated file %s: generated files should be changed at the generator source",
+			plan.SrcPath,
+		)
 	}
 	if fileImportsC(origSrc) {
-		return fmt.Errorf("cannot split cgo file %s: import \"C\" and its preamble are file-sensitive", plan.SrcPath)
+		return fmt.Errorf(
+			"cannot split cgo file %s: import \"C\" and its preamble are file-sensitive",
+			plan.SrcPath,
+		)
 	}
 	if fileHasDotImport(origSrc) {
-		return fmt.Errorf("cannot split file with dot imports %s: dot imports obscure dependencies; refactor to qualified imports first", plan.SrcPath)
+		return fmt.Errorf(
+			"cannot split file with dot imports %s: dot imports obscure dependencies; refactor to qualified imports first",
+			plan.SrcPath,
+		)
 	}
 	if err := validateBuildConstraints(plan); err != nil {
 		return err
