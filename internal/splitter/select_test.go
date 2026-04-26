@@ -244,6 +244,43 @@ const (
 	}
 }
 
+func TestSelectValueSpecs_RejectsPartialIotaExpressionConstBlock(t *testing.T) {
+	_, f := mustParse(t, `package p
+
+const (
+	A = 1 << iota
+	B
+)
+`)
+	_, err := selectDecls(f, Config{Regex: "^A$", Move: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially move iota const block") {
+		t.Fatalf("got err %v, want iota const partial move rejection", err)
+	}
+}
+
+func TestSelectValueSpecs_AllowsWholeIotaExpressionConstBlock(t *testing.T) {
+	_, f := mustParse(t, `package p
+
+const (
+	A = 1 << iota
+	B
+)
+`)
+	matches, err := selectDecls(f, Config{Regex: "^(A|B)$", Move: true})
+	if err != nil {
+		t.Fatalf("selectDecls returned error: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("len(matches) = %d, want 1", len(matches))
+	}
+	if matches[0].Synthetic {
+		t.Fatal("whole iota block move returned synthetic match")
+	}
+	if got := declKeys(matches[0].Decl); strings.Join(got, ",") != "const A,const B" {
+		t.Fatalf("declKeys = %v, want [const A const B]", got)
+	}
+}
+
 func TestSelectValueSpecs_RejectsPartialMultiNameConstWithoutOneToOneValues(t *testing.T) {
 	_, f := mustParse(t, `package p
 

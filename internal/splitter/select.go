@@ -313,20 +313,42 @@ func valueSpecPartiallyMatched(vs *ast.ValueSpec, re *regexp.Regexp) bool {
 	return count > 0 && count < len(vs.Names)
 }
 
-// isIotaConstBlock reports whether gd is a const block whose first
-// ValueSpec uses `iota` as its initializer. Subsequent specs in such a
-// block implicitly inherit the iota chain, so partial moves are rejected;
-// callers must move the whole block or refactor manually.
+// isIotaConstBlock reports whether gd is a const block with any value
+// expression containing the predeclared identifier `iota`. Subsequent specs in
+// such a block may implicitly inherit the iota chain, so partial moves are
+// rejected; callers must move the whole block or refactor manually.
 func isIotaConstBlock(gd *ast.GenDecl) bool {
 	if gd.Tok != token.CONST || len(gd.Specs) == 0 {
 		return false
 	}
-	vs0, ok := gd.Specs[0].(*ast.ValueSpec)
-	if !ok || len(vs0.Values) != 1 {
-		return false
+	for _, s := range gd.Specs {
+		vs, ok := s.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		for _, expr := range vs.Values {
+			if exprContainsIota(expr) {
+				return true
+			}
+		}
 	}
-	id, ok := vs0.Values[0].(*ast.Ident)
-	return ok && id.Name == "iota"
+	return false
+}
+
+func exprContainsIota(expr ast.Expr) bool {
+	contains := false
+	ast.Inspect(expr, func(n ast.Node) bool {
+		if contains {
+			return false
+		}
+		id, ok := n.(*ast.Ident)
+		if ok && id.Name == "iota" {
+			contains = true
+			return false
+		}
+		return true
+	})
+	return contains
 }
 
 func rejectPartialIotaConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {

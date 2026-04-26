@@ -22,9 +22,11 @@
 // rename so a crash leaves both files valid. Comments associated with moved
 // declarations travel with them, including doc comments, //go: directives,
 // leading comments, in-body comments, inline comments, and trailing orphan
-// comments when the matched declaration is at the end of the file. Partial moves
-// from an iota const block are rejected; move the whole block or refactor it
-// manually before splitting.
+// comments when the matched declaration is at the end of the file. Moves that
+// would silently change package initialization or declaration semantics are
+// rejected: init functions, partial iota const blocks, partial const blocks with
+// implicit expressions, and unsafe partial multi-name value specs must be moved
+// as a whole or refactored manually before splitting.
 package splitter
 
 import (
