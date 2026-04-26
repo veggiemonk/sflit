@@ -188,6 +188,9 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp, move bool) ([]Match, e
 		if err := rejectPartialImplicitConstMove(gd, re); err != nil {
 			return nil, err
 		}
+		if err := rejectUnsafePartialMultiNameValueSpec(gd, re); err != nil {
+			return nil, err
+		}
 	}
 	type specMatch struct {
 		spec    *ast.ValueSpec
@@ -272,6 +275,23 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp, move bool) ([]Match, e
 	}
 	gd.Specs = kept
 	return out, nil
+}
+
+func rejectUnsafePartialMultiNameValueSpec(gd *ast.GenDecl, re *regexp.Regexp) error {
+	for _, s := range gd.Specs {
+		vs, ok := s.(*ast.ValueSpec)
+		if !ok || len(vs.Names) <= 1 {
+			continue
+		}
+		matched := valueSpecMatchedNameCount(vs, re)
+		if matched == 0 || matched == len(vs.Names) {
+			continue
+		}
+		if len(vs.Values) != len(vs.Names) {
+			return fmt.Errorf("cannot partially move multi-name value spec: %d names share %d values; split the declaration manually first", len(vs.Names), len(vs.Values))
+		}
+	}
+	return nil
 }
 
 func valueSpecMatchedNameCount(vs *ast.ValueSpec, re *regexp.Regexp) int {

@@ -1,0 +1,50 @@
+# Partial splits of multi-name value specs are allowed only when values map
+# one-to-one to names. Calls and zero-value declarations are rejected.
+
+! exec sflit -source call.go -sink call_small.go -regex '^a$' -move
+stderr 'cannot partially move multi-name value spec'
+cmp call.go expected_call.go
+! exists call_small.go
+
+! exec sflit -source zero.go -sink zero_small.go -regex '^x$' -move
+stderr 'cannot partially move multi-name value spec'
+cmp zero.go expected_zero.go
+! exists zero_small.go
+
+# One-to-one values are still allowed.
+exec sflit -source explicit.go -sink explicit_small.go -regex '^m$' -move
+cmp explicit.go expected_explicit.go
+cmp explicit_small.go expected_explicit_small.go
+
+-- call.go --
+package p
+
+func pair() (int, int) { return 1, 2 }
+
+var a, b = pair()
+-- expected_call.go --
+package p
+
+func pair() (int, int) { return 1, 2 }
+
+var a, b = pair()
+-- zero.go --
+package p
+
+var x, y int
+-- expected_zero.go --
+package p
+
+var x, y int
+-- explicit.go --
+package p
+
+var m, n = 1, 2
+-- expected_explicit.go --
+package p
+
+var n = 2
+-- expected_explicit_small.go --
+package p
+
+var m = 1

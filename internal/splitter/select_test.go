@@ -244,6 +244,27 @@ const (
 	}
 }
 
+func TestSelectValueSpecs_RejectsPartialMultiNameConstWithoutOneToOneValues(t *testing.T) {
+	_, f := mustParse(t, `package p
+
+const a, b = 1
+const x, y = "same", "same"
+`)
+	if _, err := selectDecls(f, Config{Regex: "^a$"}); err != nil {
+		t.Fatalf("copy/select should allow partial multi-name const selection, got %v", err)
+	}
+
+	_, f = mustParse(t, `package p
+
+const a, b = 1
+const x, y = "same", "same"
+`)
+	_, err := selectDecls(f, Config{Regex: "^a$", Move: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially move multi-name value spec") {
+		t.Fatalf("want multi-name rejection, got %v", err)
+	}
+}
+
 func TestSelectValueSpecs_RejectsPartialMultiNameImplicitConstBlock(t *testing.T) {
 	_, f := mustParse(t, `package p
 
