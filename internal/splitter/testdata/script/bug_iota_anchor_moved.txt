@@ -1,0 +1,42 @@
+# BUG: moving the iota anchor (the spec carrying `= iota`) strands sibling
+# specs in the source const block — they lose their initialiser and produce
+# `missing init expr for X` build errors.
+#
+# Hit while splitting internal/infer/infer.go in the gojure project: the
+# resolver moved `OriginUnknown Origin = iota` alone via `-receiver Origin`
+# and the four sibling specs in the source block became `const ( Annotated
+# … )` without a type/iota anchor — invalid Go.
+#
+# Expected fix: when moving a spec that carries the `= iota` initialiser
+# from a grouped const block, sflit must either (a) refuse and emit a
+# diagnostic, or (b) hoist the initialiser onto the next remaining spec so
+# the chain survives in the source. Option (b) preserves valid Go without
+# operator intervention.
+
+exec sflit -source big.go -sink small.go -regex '^KindUnknown$' -move
+cmp big.go expected_big.go
+cmp small.go expected_small.go
+
+-- big.go --
+package p
+
+type Kind int
+
+const (
+	KindUnknown Kind = iota
+	KindA
+	KindB
+)
+-- expected_big.go --
+package p
+
+type Kind int
+
+const (
+	KindA Kind = iota
+	KindB
+)
+-- expected_small.go --
+package p
+
+const KindUnknown Kind = 0

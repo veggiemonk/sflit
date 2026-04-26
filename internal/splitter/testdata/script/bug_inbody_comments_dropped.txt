@@ -1,0 +1,44 @@
+# BUG: comments inside a moved function body are silently dropped. Both
+# free-standing line comments (// Step 1) and trailing inline comments
+# on statements vanish on move; the destination keeps the code shape
+# but every // line inside the func {…} body is gone, replaced by blank
+# lines (gofmt artefact of the missing CommentGroup).
+#
+# Hit across most splits in the gojure project — every Implementer
+# function in resolve.go, infer.go, emit.go, lower.go had `// Step 1
+# …` / `// Walk pairs …` style guidance comments that orchestrate the
+# function body. The doc audit after 6 splits had to hand-restore ~80
+# in-body comments by re-extracting from `git show HEAD:<file>`.
+#
+# Expected fix: sflit's go/printer must run with the full *token.FileSet
+# preserved across move so go/ast.CommentGroup nodes anchored to body
+# statements survive the round-trip. Currently the printer is run with
+# a fresh comment slice that only contains decl-level docs.
+
+exec sflit -source big.go -sink small.go -regex '^Foo$' -move
+cmp small.go expected_small.go
+
+-- big.go --
+package p
+
+func Foo() int {
+	// Step 1: compute base value.
+	x := 10
+	// Step 2: apply transformation.
+	y := x * 2 // double it
+	return y   // tail
+}
+
+func Bar() int {
+	return 0
+}
+-- expected_small.go --
+package p
+
+func Foo() int {
+	// Step 1: compute base value.
+	x := 10
+	// Step 2: apply transformation.
+	y := x * 2 // double it
+	return y   // tail
+}

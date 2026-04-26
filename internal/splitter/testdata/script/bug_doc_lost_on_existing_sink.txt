@@ -1,0 +1,38 @@
+# BUG: when the destination sink already exists (created by a prior
+# sflit move), subsequent moves into the same sink drop the doc
+# comments of the newly-moved decls. The first move's doc is preserved;
+# every move after it loses its leading // comment block.
+#
+# Hit repeatedly while splitting internal/ast/ast.go, internal/emit/
+# emit.go, internal/infer/infer.go in the gojure project. After 6 splits
+# we had to hand-restore ~40 doc blocks across 20 files because every
+# call after the first lost docs.
+#
+# Expected fix: when appending to an existing sink, sflit must extract
+# the moved decl's leading doc-comment group (every contiguous `//` line
+# above the decl, up to the previous decl's closing brace) and re-attach
+# it on top of the appended decl.
+
+exec sflit -source big.go -sink merged.go -receiver First -move
+exec sflit -source big.go -sink merged.go -receiver Second -move
+cmp merged.go expected_merged.go
+
+-- big.go --
+package p
+
+// First is the first type — its doc must travel.
+type First struct{}
+
+// Second is the second type — its doc must also travel.
+type Second struct{}
+
+// Third stays behind.
+type Third struct{}
+-- expected_merged.go --
+package p
+
+// First is the first type — its doc must travel.
+type First struct{}
+
+// Second is the second type — its doc must also travel.
+type Second struct{}

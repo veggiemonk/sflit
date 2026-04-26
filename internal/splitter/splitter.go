@@ -49,7 +49,7 @@ func Run(cfg Config) (Result, error) {
 	}
 	log.Info("parsed source", "path", cfg.Source, "decls", len(src.Decls))
 
-	_, origSink, err := parseGoFileIfExists(cfg.Sink)
+	sinkFset, origSink, err := parseGoFileIfExists(cfg.Sink)
 	if err != nil {
 		return Result{}, err
 	}
@@ -66,7 +66,7 @@ func Run(cfg Config) (Result, error) {
 	log.Info("selected declarations", "count", len(matches))
 
 	extracted := extractMatches(fset, src, matches)
-	plan := buildPlan(fset, cfg.Source, cfg.Sink, src, origSink, extracted, cfg.Move)
+	plan := buildPlan(fset, sinkFset, cfg.Source, cfg.Sink, src, origSink, extracted, cfg.Move)
 	plan.Selection = selectionSummary(cfg)
 	if err := validatePlan(plan, origSink, src); err != nil {
 		return Result{}, err

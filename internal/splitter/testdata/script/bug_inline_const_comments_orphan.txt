@@ -1,0 +1,43 @@
+# BUG: when every spec in a grouped const block matches the regex, the
+# block moves correctly but the trailing inline `// foo` comments are
+# left behind in the source as orphan top-level comment lines that
+# belong to nothing. The destination keeps the inline comments
+# correctly; the source needs them deleted along with the spec.
+#
+# Hit while splitting internal/ast/ast.go: KindParam // … and ~10
+# sibling consts moved cleanly into kind.go but ast.go was left with a
+# floating block of // comments that gofmt then re-attached to a
+# completely unrelated import line in a follow-up pass.
+#
+# Expected fix: when removing a spec from a grouped block, sflit must
+# also remove its trailing line-comment along with the spec (the comment
+# is part of the spec's CommentGroup in go/ast — extract it together).
+
+exec sflit -source big.go -sink small.go -regex '^Kind' -move
+cmp big.go expected_big.go
+cmp small.go expected_small.go
+
+-- big.go --
+package p
+
+type Kind int
+
+const (
+	KindUnknown Kind = iota
+	KindA                   // doc-A inline
+	KindB                   // doc-B inline
+	KindC                   // doc-C inline
+)
+-- expected_big.go --
+package p
+-- expected_small.go --
+package p
+
+type Kind int
+
+const (
+	KindUnknown Kind = iota
+	KindA            // doc-A inline
+	KindB            // doc-B inline
+	KindC            // doc-C inline
+)

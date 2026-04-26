@@ -1,0 +1,50 @@
+# BUG: partial regex match across an `iota` const block silently breaks
+# both halves. The moved subset lands in the destination with iota
+# resetting from 0 (changing semantic values); the surviving subset in
+# the source stays with the anchor, but if the anchor itself was moved
+# the source siblings have no initialiser at all (build red).
+#
+# Hit while splitting internal/infer/infer.go: regex matched only some
+# of the ErrorKindXxx specs; destination consts got iota-renumbered and
+# source stranded the rest.
+#
+# Expected fix: refuse partial moves of grouped iota'd const blocks
+# unless every spec in the block matches, OR emit a single warning to
+# stderr and a structured `bail` exit code so the operator can split
+# differently. The status-quo silent corruption is the worst behaviour.
+
+exec sflit -source big.go -sink small.go -regex '^Kind(A|B)$' -move
+cmp big.go expected_big.go
+cmp small.go expected_small.go
+
+-- big.go --
+package p
+
+type Kind int
+
+const (
+	KindUnknown Kind = iota
+	KindA
+	KindB
+	KindC
+	KindD
+)
+-- expected_big.go --
+package p
+
+type Kind int
+
+const (
+	KindUnknown Kind = iota
+	_
+	_
+	KindC
+	KindD
+)
+-- expected_small.go --
+package p
+
+const (
+	KindA Kind = 1
+	KindB Kind = 2
+)

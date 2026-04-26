@@ -16,6 +16,7 @@ Entry format:
 ---
 
 ## CI pipeline for forgejo remote
+
 - **Context:** `origin` points at forgejo (`ssh://forgejo/eijlnu/sflit.git`).
   GitHub Actions workflow added under `.github/workflows/ci.yml`; forgejo
   has no equivalent config yet.
@@ -25,6 +26,7 @@ Entry format:
   push to main + PRs on the forgejo instance.
 
 ## Release tooling (goreleaser + tagged binaries)
+
 - **Context:** `internal/version` already exposes a version string; no
   release pipeline wires tags → binaries.
 - **Why deferred:** not blocking any user today; version string is
@@ -34,6 +36,7 @@ Entry format:
   Releases.
 
 ## CHANGELOG.md tied to releases
+
 - **Context:** no user-facing log of behavior changes. `experiment.md`
   tracks dev-only notes. The `-regex` semantics shift (commit `cf6841e`)
   was a breaking behavioral change with no changelog entry.

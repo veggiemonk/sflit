@@ -26,7 +26,7 @@ func TestBuildPlan_CopyNewSink(t *testing.T) {
 	fset, src := mustParse(t, "package p\nfunc Foo(){}\nfunc Bar(){}\n")
 	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
 	ex := extractMatches(fset, src, ms)
-	plan := buildPlan(fset, "src.go", "sink.go", src, nil, ex, false)
+	plan := buildPlan(fset, nil, "src.go", "sink.go", src, nil, ex, false)
 	if !plan.SinkIsNew {
 		t.Fatal("expected sink to be new")
 	}
@@ -42,7 +42,7 @@ func TestBuildPlan_MoveNewSink(t *testing.T) {
 	fset, src := mustParse(t, "package p\nfunc Foo(){}\nfunc Bar(){}\n")
 	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
 	ex := extractMatches(fset, src, ms)
-	plan := buildPlan(fset, "src.go", "sink.go", src, nil, ex, true)
+	plan := buildPlan(fset, nil, "src.go", "sink.go", src, nil, ex, true)
 	if got := declNames(plan.SrcFile); len(got) != 1 || got[0] != "Bar" {
 		t.Fatalf("src post-move = %v", got)
 	}
@@ -56,7 +56,7 @@ func TestBuildPlan_AppendToExistingSink(t *testing.T) {
 	_, sink := mustParse(t, "package p\nfunc Existing(){}\n")
 	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
 	ex := extractMatches(fset, src, ms)
-	plan := buildPlan(fset, "src.go", "sink.go", src, sink, ex, false)
+	plan := buildPlan(fset, nil, "src.go", "sink.go", src, sink, ex, false)
 	if plan.SinkIsNew {
 		t.Fatal("sink should not be new")
 	}
