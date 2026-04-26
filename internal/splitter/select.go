@@ -56,6 +56,11 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 			case cfg.Receiver == "" && re != nil:
 				// regex-only: match funcs AND methods by name.
 				if re.MatchString(x.Name.Name) {
+					if cfg.Move {
+						if err := rejectInitMove(x); err != nil {
+							return nil, err
+						}
+					}
 					kind := KindFunc
 					if isMethod {
 						kind = KindMethod
@@ -83,6 +88,13 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 		}
 	}
 	return out, nil
+}
+
+func rejectInitMove(fn *ast.FuncDecl) error {
+	if fn.Recv == nil && fn.Name != nil && fn.Name.Name == "init" {
+		return fmt.Errorf("cannot move init function: init order may change; refactor init body into a named function and move that instead")
+	}
+	return nil
 }
 
 // selectGenDecl picks specs from a type/var/const GenDecl according to cfg.

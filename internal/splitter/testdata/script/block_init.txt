@@ -1,0 +1,28 @@
+# Moving init functions is rejected because file movement can change package
+# initialization order.
+
+! exec sflit -source big.go -sink small.go -regex '^init$' -move
+stderr 'cannot move init function'
+cmp big.go expected_big.go
+! exists small.go
+
+-- big.go --
+package p
+
+var Seen []string
+
+func init() {
+	Seen = append(Seen, "big")
+}
+
+func Keep() {}
+-- expected_big.go --
+package p
+
+var Seen []string
+
+func init() {
+	Seen = append(Seen, "big")
+}
+
+func Keep() {}

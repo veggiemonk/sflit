@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"strings"
 	"testing"
 )
 
@@ -90,6 +91,25 @@ func TestSelectRegexOnly_NoMatch(t *testing.T) {
 	}
 	if len(ms) != 0 {
 		t.Fatalf("want 0 matches, got %d", len(ms))
+	}
+}
+
+func TestSelectRegexOnly_InitCopyAllowed(t *testing.T) {
+	_, f := mustParse(t, "package p\nfunc init(){}\n")
+	ms, err := selectDecls(f, Config{Regex: "^init$"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := matchNames(ms); len(got) != 1 || got[0] != "init" {
+		t.Fatalf("got %v, want [init]", got)
+	}
+}
+
+func TestSelectRegexOnly_InitMoveRejected(t *testing.T) {
+	_, f := mustParse(t, "package p\nfunc init(){}\n")
+	_, err := selectDecls(f, Config{Regex: "^init$", Move: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot move init function") {
+		t.Fatalf("got err %v, want cannot move init function", err)
 	}
 }
 
