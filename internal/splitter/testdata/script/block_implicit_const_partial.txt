@@ -1,0 +1,36 @@
+# Partial moves from const blocks with implicit expressions are rejected.
+# B and C inherit A's expression, so moving only B would be misleading.
+
+! exec sflit -source big.go -sink small.go -regex '^B$' -move
+stderr 'cannot partially move const block with implicit expressions'
+cmp big.go expected_big.go
+! exists small.go
+
+# Moving the whole implicit const block is allowed.
+exec sflit -source big.go -sink all.go -regex '^(A|B|C)$' -move
+cmp all.go expected_all.go
+
+-- big.go --
+package p
+
+const (
+	A = "x"
+	B
+	C
+)
+-- expected_big.go --
+package p
+
+const (
+	A = "x"
+	B
+	C
+)
+-- expected_all.go --
+package p
+
+const (
+	A = "x"
+	B
+	C
+)

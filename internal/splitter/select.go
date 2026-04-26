@@ -110,7 +110,7 @@ func selectGenDecl(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) ([]Match, err
 			// Receiver-only mode never matches vars/consts.
 			return nil, nil
 		}
-		return selectValueSpecs(gd, re)
+		return selectValueSpecs(gd, re, cfg.Move)
 	}
 	return nil, nil
 }
@@ -178,9 +178,14 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 //     so removeDecls strips it from the source entirely;
 //  3. partial match → emit synthetic per-name/per-spec matches; mutate
 //     the source gd to drop moved specs/names.
-func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
-	if isIotaConstBlock(gd) {
-		if err := rejectPartialIotaConstMove(gd, re); err != nil {
+func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp, move bool) ([]Match, error) {
+	if move {
+		if isIotaConstBlock(gd) {
+			if err := rejectPartialIotaConstMove(gd, re); err != nil {
+				return nil, err
+			}
+		}
+		if err := rejectPartialImplicitConstMove(gd, re); err != nil {
 			return nil, err
 		}
 	}
@@ -269,6 +274,25 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
 	return out, nil
 }
 
+func valueSpecMatchedNameCount(vs *ast.ValueSpec, re *regexp.Regexp) int {
+	count := 0
+	for _, n := range vs.Names {
+		if re.MatchString(n.Name) {
+			count++
+		}
+	}
+	return count
+}
+
+func valueSpecFullyMatched(vs *ast.ValueSpec, re *regexp.Regexp) bool {
+	return len(vs.Names) > 0 && valueSpecMatchedNameCount(vs, re) == len(vs.Names)
+}
+
+func valueSpecPartiallyMatched(vs *ast.ValueSpec, re *regexp.Regexp) bool {
+	count := valueSpecMatchedNameCount(vs, re)
+	return count > 0 && count < len(vs.Names)
+}
+
 // isIotaConstBlock reports whether gd is a const block whose first
 // ValueSpec uses `iota` as its initializer. Subsequent specs in such a
 // block implicitly inherit the iota chain, so partial moves are rejected;
@@ -308,4 +332,36 @@ func rejectPartialIotaConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
 		matchedNames,
 		totalNames,
 	)
+}
+
+func rejectPartialImplicitConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
+	if gd.Tok != token.CONST || len(gd.Specs) == 0 {
+		return nil
+	}
+
+	totalSpecs := 0
+	matchedSpecs := 0
+	hasImplicit := false
+	hasPartialSpec := false
+	for _, s := range gd.Specs {
+		vs, ok := s.(*ast.ValueSpec)
+		if !ok {
+			continue
+		}
+		totalSpecs++
+		if len(vs.Values) == 0 {
+			hasImplicit = true
+		}
+		if valueSpecFullyMatched(vs, re) {
+			matchedSpecs++
+		} else if valueSpecPartiallyMatched(vs, re) {
+			matchedSpecs++
+			hasPartialSpec = true
+		}
+	}
+
+	if !hasImplicit || matchedSpecs == 0 || (matchedSpecs == totalSpecs && !hasPartialSpec) {
+		return nil
+	}
+	return fmt.Errorf("cannot partially move const block with implicit expressions: move the whole block or make each const expression explicit")
 }

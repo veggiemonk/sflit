@@ -222,3 +222,38 @@ func (r R) Other() {}
 		}
 	}
 }
+
+func TestSelectValueSpecs_AllowsPartialExplicitConstBlock(t *testing.T) {
+	_, f := mustParse(t, `package p
+
+const (
+	A = "x"
+	B = "y"
+	C = "z"
+)
+`)
+	matches, err := selectDecls(f, Config{Regex: "^B$", Move: true})
+	if err != nil {
+		t.Fatalf("selectDecls returned error: %v", err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("len(matches) = %d, want 1", len(matches))
+	}
+	if got := declKeys(matches[0].Decl); len(got) != 1 || got[0] != "const B" {
+		t.Fatalf("declKeys = %v, want [const B]", got)
+	}
+}
+
+func TestSelectValueSpecs_RejectsPartialMultiNameImplicitConstBlock(t *testing.T) {
+	_, f := mustParse(t, `package p
+
+const (
+	A, B = 1, 2
+	C, D
+)
+`)
+	_, err := selectDecls(f, Config{Regex: "^(A|C|D)$", Move: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially move const block with implicit expressions") {
+		t.Fatalf("got err %v, want implicit const partial move rejection", err)
+	}
+}
