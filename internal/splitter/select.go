@@ -1,10 +1,12 @@
 package splitter
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"regexp"
+	"slices"
 )
 
 type MatchKind int
@@ -92,7 +94,9 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 
 func rejectInitMove(fn *ast.FuncDecl) error {
 	if fn.Recv == nil && fn.Name != nil && fn.Name.Name == "init" {
-		return fmt.Errorf("cannot move init function: init order may change; refactor init body into a named function and move that instead")
+		return errors.New(
+			"cannot move init function: init order may change; refactor init body into a named function and move that instead",
+		)
 	}
 	return nil
 }
@@ -288,7 +292,11 @@ func rejectUnsafePartialMultiNameValueSpec(gd *ast.GenDecl, re *regexp.Regexp) e
 			continue
 		}
 		if len(vs.Values) != len(vs.Names) {
-			return fmt.Errorf("cannot partially move multi-name value spec: %d names share %d values; split the declaration manually first", len(vs.Names), len(vs.Values))
+			return fmt.Errorf(
+				"cannot partially move multi-name value spec: %d names share %d values; split the declaration manually first",
+				len(vs.Names),
+				len(vs.Values),
+			)
 		}
 	}
 	return nil
@@ -326,10 +334,8 @@ func isIotaConstBlock(gd *ast.GenDecl) bool {
 		if !ok {
 			continue
 		}
-		for _, expr := range vs.Values {
-			if exprContainsIota(expr) {
-				return true
-			}
+		if slices.ContainsFunc(vs.Values, exprContainsIota) {
+			return true
 		}
 	}
 	return false
@@ -405,5 +411,7 @@ func rejectPartialImplicitConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
 	if !hasImplicit || matchedSpecs == 0 || (matchedSpecs == totalSpecs && !hasPartialSpec) {
 		return nil
 	}
-	return fmt.Errorf("cannot partially move const block with implicit expressions: move the whole block or make each const expression explicit")
+	return errors.New(
+		"cannot partially move const block with implicit expressions: move the whole block or make each const expression explicit",
+	)
 }
