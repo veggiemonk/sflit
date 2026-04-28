@@ -169,8 +169,7 @@ func RunCLI(args []string, _ io.Reader, stdout io.Writer, stderr io.Writer) int 
 	res, err := Run(cfg)
 	if err != nil {
 		_, _ = fmt.Fprintln(stderr, "sflit:", err)
-		var usageErr UsageError
-		if errors.As(err, &usageErr) {
+		if errors.Is(&UsageError{}, err) {
 			return 2
 		}
 		return 1
