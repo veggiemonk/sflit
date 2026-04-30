@@ -5,9 +5,9 @@ COMMIT  := $(shell git rev-parse --short HEAD 2>/dev/null || echo none)
 GOFLAGS := -trimpath
 LDFLAGS := -s -w
 
-.PHONY: check build install test lint vet fix clean help
+.PHONY: check build install test lint vet vuln fix clean help
 
-check: lint test build ## Run lint, test, build
+check: lint vuln test build ## Run lint, vuln, test, build
 
 build: ## Build the binary
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BINARY) .
@@ -16,13 +16,13 @@ install: ## Install to $GOPATH/bin
 	go install $(GOFLAGS) -ldflags '$(LDFLAGS)' .
 
 test: ## Run tests
-	go test -race -count=1 ./...
+	go test -race -count=1 -shuffle=on -timeout=10m ./...
 
 test-v: ## Run tests (verbose)
-	go test -race -count=1 -v ./...
+	go test -race -count=1 -shuffle=on -timeout=10m -v ./...
 
 cover: ## Run tests with coverage report
-	go test -race -count=1 -coverprofile=coverage.out ./...
+	go test -race -count=1 -shuffle=on -timeout=10m -coverprofile=coverage.out ./...
 	go tool cover -func=coverage.out
 	@rm -f coverage.out
 
@@ -31,6 +31,9 @@ lint: vet ## Run all linters
 
 vet: ## Run go vet
 	go vet ./...
+
+vuln: ## govulncheck
+	go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
 fix: ## Run go fix
 	go fix ./...
