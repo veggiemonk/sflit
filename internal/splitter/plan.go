@@ -25,26 +25,19 @@ import (
 // per-file: rendering OrigSink and MovedFile through different FileSets
 // avoids the cross-file misordering that arises when both share one fset.
 type Plan struct {
-	Fset      *token.FileSet
-	SinkFset  *token.FileSet
-	SrcFile   *ast.File
-	OrigSink  *ast.File
-	MovedFile *ast.File
-	// SinkFile is the union of OrigSink's decls and MovedFile's decls,
-	// used by validatePlan for collision checks. It is NOT used for
-	// rendering — the renderer handles OrigSink and MovedFile separately.
+	Fset              *token.FileSet
+	SinkFset          *token.FileSet
+	SrcFile           *ast.File
+	OrigSink          *ast.File
+	MovedFile         *ast.File
 	SinkFile          *ast.File
 	SrcPath           string
 	SinkPath          string
 	Selection         string
+	extracted         []Extracted
 	OrigSinkDeclCount int
 	SinkIsNew         bool
 	Move              bool
-
-	// extracted retains the staged matches (decls, travelling comments,
-	// and synthetic spec origins) so applyMove can splice the source
-	// after validation. The renderer never reads it.
-	extracted []Extracted
 }
 
 func buildPlan(

@@ -329,7 +329,8 @@ const (
 )
 `)
 	_, err := selectDecls(f, Config{Regex: "^(A|C|D)$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
+	if err == nil ||
+		!strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
 		t.Fatalf("got err %v, want implicit const partial split rejection", err)
 	}
 }
@@ -345,7 +346,8 @@ const (
 )
 `)
 	_, err := selectDecls(f, Config{Regex: "^B$"})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
+	if err == nil ||
+		!strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
 		t.Fatalf("got err %v, want implicit const partial split rejection", err)
 	}
 }

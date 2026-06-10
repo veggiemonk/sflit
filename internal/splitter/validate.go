@@ -140,7 +140,8 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 		if same {
 			return fmt.Errorf(
 				"cannot copy within the same directory: source %s and sink %s are in the same package, so the copied declarations would duplicate the originals and the package would no longer compile; use -move to move them, or copy into a different directory",
-				plan.SrcPath, plan.SinkPath,
+				plan.SrcPath,
+				plan.SinkPath,
 			)
 		}
 	}

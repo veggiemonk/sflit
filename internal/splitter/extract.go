@@ -13,8 +13,8 @@ import (
 // group on move.
 type Extracted struct {
 	Decl      ast.Decl
+	Origin    *SpecOrigin
 	LeadComms []*ast.CommentGroup
-	Origin    *SpecOrigin // non-nil for synthetic matches
 }
 
 // extractMatches gathers, for each matched decl, every comment group that

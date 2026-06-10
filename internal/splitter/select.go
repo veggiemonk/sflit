@@ -20,14 +20,9 @@ const (
 
 type Match struct {
 	Decl      ast.Decl
+	Origin    *SpecOrigin
 	Kind      MatchKind
-	Synthetic bool // true when Decl was constructed and is not in file.Decls
-	// Origin records, for synthetic matches, which source group decl and
-	// spec the synthetic was split from (plus the matched name indices for
-	// a partially matched multi-name value spec). It drives the move-time
-	// source splice in Plan.applyMove; selection itself never mutates the
-	// source AST. Nil for non-synthetic matches.
-	Origin *SpecOrigin
+	Synthetic bool
 }
 
 // SpecOrigin points back into the source AST for a synthetic match: the
