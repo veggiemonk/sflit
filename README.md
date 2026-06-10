@@ -1,43 +1,45 @@
 # Sflit
 
-The go file splitter. 
+Move Go declarations between files without changing what your program means.
+
+sflit moves or copies top-level Go declarations between files through the
+AST, and refuses any operation that could change what the program means.
+It is a declaration mover, and **split** (one file → many) and **merge**
+(many → one) are its two directions. The output has **semantic accuracy**,
+not byte-for-byte fidelity: the AST is re-parsed and reprinted through
+`gofmt`, and imports are updated in written files.
 
 > File boundaries are not important in Go and a tool to split files sounds questionable.
 
-The use cases for splitting files are:
+Fair. Then a file grew past 5000 lines. Refactoring it consumed so many
+tokens and doing it manually was pretty painful. It is not about code
+quality or taste, just pure efficiency and speed. Therefore this tool exist.
 
-1. **Token efficiency and edit reliability.** Reading a 5000-line file burns
-   tokens; editing it is worse — string-replacement edits are far more
-   reliable in a 200-line file, and when an agent changes a small file, only
-   that file needs re-reading while the rest of the package stays cached.
-2. **Context by file name.** An agent (or a human) scanning a directory gets a
-   map of the package from the file names alone, and reads only the file that
-   matters.
-3. **Parallel editing without contention.** A huge file is a serialization
-   point: two agents — or an agent and a human — editing it collide with merge
-   conflicts and stomped edits. After a split, work on disjoint features
-   touches disjoint files.
-4. **Reviewable pure-move commits.** Because moves are semantically accurate
-   and anything risky is rejected, a split can land as a commit that contains
-   only moves — a reviewer verifies the partition, not the code, and the
-   behavioral change lands separately.
-5. **Moving declarations, not just splitting.** The sink can be an existing
-   file, so the same operation merges over-split files back together,
-   relocates a stray declaration to the file where it belongs, or undoes a
-   split that broke the build.
-6. **Test-file parity.** `_test.go` files split the same way, so the test
-   layout can mirror the source layout (`foo.go` / `foo_test.go`).
-7. **Enforcing a file-size policy.** If your team caps files at N lines, the
-   linter flags and `sflit` remediates — no risky hand refactor.
+Here is what moving declarations buys you:
 
-Refactoring a file of more than 5000 lines consumed so many tokens and doing it manually was pretty painful. 
-It is not about code quality or taste, just pure efficiency and speed.
-
-Therefore this tool exist.
-
-`sflit` moves or copies top-level Go declarations between files with
-**semantic accuracy** (not byte-for-byte): the AST is re-parsed and reprinted
-through `gofmt`, and imports are updated in written files.
+1. **Agent-efficient codebases.** After a split, an agent reads only the
+   file that matters. Small files make string-matching edits reliable, and
+   when an agent changes one file, the rest of the package stays cached.
+   The filenames become a map of the package.
+2. **Parallel editing without contention.** A 5000-line file is a
+   serialization point: two agents — or an agent and a human — editing it
+   collide with merge conflicts and stomped edits. After a split, work on
+   disjoint features touches disjoint files.
+3. **Reviewable pure-move commits.** Semantic accuracy plus blocked splits
+   mean a move can land as a commit that is verifiably behavior-free. The
+   reviewer checks the partition, not the code; the behavioral change lands
+   separately.
+4. **Merging and reorganizing.** Because sflit is a declaration mover, the
+   reverse direction works too: merge over-split files back into one,
+   move a stray declaration to the file where it belongs, or re-partition
+   a package by feature. A move that turned out wrong is fixed by a
+   reversal — the same move with source and sink swapped.
+5. **Test-file parity.** `_test.go` files move the same way, so the test
+   layout can mirror the source layout — `foo.go` and `foo_test.go` stay
+   aligned.
+6. **Enforcing a file-size policy.** When the team rule says files over N
+   lines must be split, sflit is the remediation: the linter flags, sflit
+   moves, nothing changes meaning.
 
 ## Dependencies
 
@@ -64,10 +66,11 @@ make install    # installs to $GOPATH/bin
 ## Usage
 [embedmd]:# (TOOL.md)
 ```md
-sflit — semantic file splitter for Go
+sflit - moves Go declarations between files
 
-Moves or copies top-level Go declarations between files.
-AST is re-parsed and reprinted through gofmt; imports are updated in written files.
+Moves or copies top-level Go declarations between files through the AST,
+and refuses any operation that could change what the program means.
+Files are re-parsed and reprinted through gofmt; imports are updated in written files.
 
 Usage:
   sflit -source <file> -sink <file> [flags]
@@ -86,8 +89,8 @@ Selection rules:
   -regex R              Any top-level decl whose name matches R — funcs,
                         methods (matched by method name only, any receiver),
                         vars, consts, types. Grouped var/const/type blocks
-                        are split so only the matching specs are selected;
-                        siblings stay behind.
+                        are narrowed — matching specs travel, siblings
+                        stay behind.
   -receiver T           Type T if present and all its methods (copy by default; move with -move).
   -receiver T -regex R  Only methods of T matching R (type stays).
 
@@ -138,7 +141,7 @@ Examples:
   # Move specific methods
   sflit -source big.go -receiver MyStruct -regex '^Filter' -sink my_struct_filter.go -move
 
-  # Undo: moved a func and build broke? Move it back
+  # Reversal: moved a declaration and regret it? Swap source and sink to move it back
   sflit -source small.go -regex '^Filter' -sink big.go -move
 
 Other:
@@ -174,7 +177,8 @@ schema source.
 - On copy, only the sink is written; on move, source and sink are written via temp-file + rename.
 - Concurrent invocations on the same files are safe without external coordination — fan out N agents freely. Each run hashes source and sink at parse and verifies both under a short per-file lock at commit; a conflicting write (by sflit or any other tool) triggers a re-run against the fresh content, up to `-retries` times (default 5). See [ADR-0001](docs/adr/0001-optimistic-concurrency-for-parallel-edits.md). Sidecar lock files (`.<name>.sflit.lock`) are removed on release; on windows (best-effort platform) they are left behind and are safe to ignore or gitignore.
 - Copying (the default, without `-move`) into the source's own directory is rejected before writing: the source keeps every selected declaration, so the package would gain duplicate names and stop compiling. Use `-move` for same-directory splits; copy targets a sink in a different directory.
-- `sflit` rejects splits (copy and move alike) that are likely to change semantics silently or produce invalid Go: `init` functions, partial `iota`/implicit const blocks, and unsafe partial multi-name value specs.
+- A copy or move that could silently change semantics or produce invalid Go is a blocked split — rejected before any write: `init` functions, narrowing of `iota`/implicit const blocks, and unsafe partial multi-name value specs.
+- Otherwise, a selector that matches only part of a grouped var/const/type block narrows it: the matching specs travel, the siblings stay in the source.
 - `sflit` rejects generated files, cgo files, dot-import files, and build-constraint mismatches rather than guessing at file-sensitive semantics.
 - Blank identifier declarations such as interface assertions do not collide with each other.
 - Comments associated with moved declarations travel with them: doc comments, `//go:` directives, free-floating lead comments, in-body comments, inline spec/statement comments, and trailing orphan comments when the matched declaration is at the end of the file.

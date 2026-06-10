@@ -1,4 +1,4 @@
-// Package splitter implements the sflit semantic file-splitter pipeline.
+// Package splitter implements the sflit declaration-moving pipeline.
 //
 // It moves or copies top-level Go declarations (functions, methods, types,
 // vars, consts) between files with semantic accuracy: source and sink are
@@ -9,7 +9,7 @@
 // Selection is driven by [Config]:
 //   - Regex: matches any top-level declaration name (funcs, methods on any
 //     receiver, vars, consts, types). Grouped var/const/type blocks are
-//     split so only matching specs are selected.
+//     narrowed — matching specs travel, siblings stay.
 //   - Receiver: matches a type and all its methods (copy by default; move
 //     with Config.Move).
 //   - Regex + Receiver: restricts to methods of Receiver whose name matches.
@@ -30,7 +30,7 @@
 // would silently change package initialization or declaration semantics are
 // rejected: init functions, partial iota const blocks, partial const blocks with
 // implicit expressions, and unsafe partial multi-name value specs must be moved
-// as a whole or refactored manually before splitting.
+// as a whole or refactored manually first.
 //
 // Copy mode (Move false, the default) only writes the sink, so it is valid
 // only when the sink lives in a different directory than the source (same

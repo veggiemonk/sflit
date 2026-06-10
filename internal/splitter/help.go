@@ -2,10 +2,11 @@ package splitter
 
 import "io"
 
-const helpText = `sflit — semantic file splitter for Go
+const helpText = `sflit - moves Go declarations between files
 
-Moves or copies top-level Go declarations between files.
-AST is re-parsed and reprinted through gofmt; imports are updated in written files.
+Moves or copies top-level Go declarations between files through the AST,
+and refuses any operation that could change what the program means.
+Files are re-parsed and reprinted through gofmt; imports are updated in written files.
 
 Usage:
   sflit -source <file> -sink <file> [flags]
@@ -24,8 +25,8 @@ Selection rules:
   -regex R              Any top-level decl whose name matches R — funcs,
                         methods (matched by method name only, any receiver),
                         vars, consts, types. Grouped var/const/type blocks
-                        are split so only the matching specs are selected;
-                        siblings stay behind.
+                        are narrowed — matching specs travel, siblings
+                        stay behind.
   -receiver T           Type T if present and all its methods (copy by default; move with -move).
   -receiver T -regex R  Only methods of T matching R (type stays).
 
@@ -76,7 +77,7 @@ Examples:
   # Move specific methods
   sflit -source big.go -receiver MyStruct -regex '^Filter' -sink my_struct_filter.go -move
 
-  # Undo: moved a func and build broke? Move it back
+  # Reversal: moved a declaration and regret it? Swap source and sink to move it back
   sflit -source small.go -regex '^Filter' -sink big.go -move
 
 Other:

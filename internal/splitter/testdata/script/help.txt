@@ -1,6 +1,6 @@
 # No args shows help and exits 2.
 ! exec sflit
-stderr 'semantic file splitter for Go'
+stderr 'moves Go declarations between files'
 stderr 'Usage:'
 stderr 'Selection rules:'
 stderr 'Examples:'
@@ -8,12 +8,12 @@ stderr 'Exit codes:'
 
 # -h shows help and exits 0.
 exec sflit -h
-stderr 'semantic file splitter for Go'
+stderr 'moves Go declarations between files'
 
 # --help shows help and exits 0.
 exec sflit --help
-stderr 'semantic file splitter for Go'
+stderr 'moves Go declarations between files'
 
 # help subcommand shows help and exits 0.
 exec sflit help
-stderr 'semantic file splitter for Go'
+stderr 'moves Go declarations between files'

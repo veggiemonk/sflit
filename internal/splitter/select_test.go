@@ -176,7 +176,7 @@ func (m MyStruct) Foo() {}
 		}
 	}
 	if !helperFound {
-		t.Fatal("Helper type was removed from source after splitting MyStruct out")
+		t.Fatal("Helper type was removed from source after moving MyStruct out")
 	}
 }
 

@@ -6,7 +6,7 @@ import "encoding/json"
 func toolSchemaJSON() []byte {
 	schema := map[string]any{
 		"name":        "sflit",
-		"description": "Semantic file splitter for Go. Moves or copies top-level declarations (functions, methods, types, vars, consts) between files. AST is re-parsed and reprinted through gofmt; imports are updated in written files. Moves that risk silently changing semantics are conservatively rejected. Comments associated with moved declarations travel with them.",
+		"description": "Moves or copies top-level Go declarations (functions, methods, types, vars, consts) between files through the AST. Files are re-parsed and reprinted through gofmt; imports are updated in written files. Comments associated with moved declarations travel with them. Conservatively refuses any operation that could change what the program means.",
 		"parameters": map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -20,7 +20,7 @@ func toolSchemaJSON() []byte {
 				},
 				"regex": map[string]any{
 					"type":        "string",
-					"description": "Regex matched against top-level declaration names — funcs, methods (method name only, any receiver), vars, consts, types. Grouped var/const/type blocks are split so only matching specs are selected. Combine with -receiver to restrict to methods of one type.",
+					"description": "Regex matched against top-level declaration names — funcs, methods (method name only, any receiver), vars, consts, types. Grouped var/const/type blocks are narrowed — matching specs travel, siblings stay. Combine with -receiver to restrict to methods of one type.",
 				},
 				"receiver": map[string]any{
 					"type":        "string",
@@ -62,7 +62,7 @@ func toolSchemaJSON() []byte {
 		"selection_rules": []map[string]string{
 			{
 				"flags":    "-regex R",
-				"behavior": "Any top-level decl whose name matches R (funcs, methods by method name only, vars, consts, types). Grouped var/const/type blocks are split so only matching specs are selected.",
+				"behavior": "Any top-level decl whose name matches R (funcs, methods by method name only, vars, consts, types). Grouped var/const/type blocks are narrowed — matching specs travel, siblings stay.",
 			},
 			{
 				"flags":    "-receiver T",
@@ -98,7 +98,7 @@ func toolSchemaJSON() []byte {
 				},
 			},
 			{
-				"description": "Undo a move (move it back)",
+				"description": "Reverse a move (swap source and sink)",
 				"command":     "sflit -source filter.go -regex '^Filter' -sink big.go -move -json",
 				"output": map[string]any{
 					"source":                 "filter.go",

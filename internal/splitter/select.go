@@ -27,7 +27,7 @@ type Match struct {
 
 // SpecOrigin points back into the source AST for a synthetic match: the
 // group GenDecl in file.Decls and the spec inside it that the synthetic
-// was split from. Names lists the matched name indices when only some
+// was narrowed from. Names lists the matched name indices when only some
 // names of a multi-name ValueSpec matched; nil means the whole spec moves.
 type SpecOrigin struct {
 	Decl  *ast.GenDecl
@@ -39,10 +39,10 @@ type SpecOrigin struct {
 //
 //   - cfg.Regex alone: matches any top-level decl by NAME — funcs,
 //     methods, vars, consts, types. Grouped var/const/type decls are
-//     split so only the matching specs are selected.
+//     narrowed — matching specs travel, siblings stay.
 //   - cfg.Receiver alone: matches the named type plus every method
 //     whose receiver's base type equals Receiver. Grouped type decls
-//     are split so sibling types stay in place.
+//     are narrowed so sibling types stay in place.
 //   - cfg.Receiver + cfg.Regex: matches only methods of Receiver
 //     whose name matches Regex. The type itself is not moved.
 //
@@ -114,7 +114,7 @@ func rejectInitSplit(fn *ast.FuncDecl) error {
 }
 
 // selectGenDecl picks specs from a type/var/const GenDecl according to cfg.
-// Returns a []Match. Grouped decls with partial matches are split: synthetic
+// Returns a []Match. Grouped decls with partial matches are narrowed: synthetic
 // single-spec GenDecls are emitted for the sink, each carrying a SpecOrigin
 // so the move-time splice can drop the spec from the source group after
 // validation (Plan.applyMove). The source AST is never mutated here.
@@ -166,7 +166,7 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 		out = append(out, Match{Decl: gd, Kind: KindTypeDecl})
 		return out
 	}
-	// Partial match → split. Build synthetics for matched specs; the
+	// Partial match → narrow. Build synthetics for matched specs; the
 	// source group stays untouched and the splice is deferred to
 	// Plan.applyMove via Origin.
 	for _, i := range matchIdx {
@@ -183,8 +183,8 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 }
 
 // selectValueSpecs picks ValueSpecs from a var/const block whose names
-// match the regex. Grouped declarations are split spec-by-spec; a
-// ValueSpec declaring multiple names (e.g. `var a, b = 1, 2`) is split
+// match the regex. Grouped declarations are narrowed spec-by-spec; a
+// ValueSpec declaring multiple names (e.g. `var a, b = 1, 2`) is narrowed
 // name-by-name into synthetic single-name specs. Three outcomes per
 // GenDecl:
 //  1. no names match → return nil;
@@ -263,7 +263,7 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
 			})
 			continue
 		}
-		// Partial name match within a multi-name ValueSpec. Split each
+		// Partial name match within a multi-name ValueSpec. Narrow each
 		// taken name into its own synthetic single-name spec (sharing the
 		// original Ident/Type/Value nodes); the surviving names are
 		// trimmed from the original spec by Plan.applyMove on move.

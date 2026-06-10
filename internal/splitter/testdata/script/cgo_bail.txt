@@ -1,5 +1,5 @@
 # cgo files are rejected conservatively. The preamble before import "C" is
-# file-sensitive and should not be split mechanically.
+# file-sensitive, so moving declarations out of it mechanically is unsafe.
 
 ! exec sflit -source cgo.go -sink small.go -regex '^UseC$' -move
 stderr 'cannot split cgo file'

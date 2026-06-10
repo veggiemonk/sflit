@@ -1,17 +1,20 @@
-// Command sflit is a semantic file splitter for Go.
+// Command sflit moves or copies top-level Go declarations between Go files.
 //
-// sflit moves or copies top-level Go declarations between files. The AST is
-// re-parsed and reprinted through gofmt; imports are updated in written files.
-// Comments associated with moved declarations travel with them, including doc
-// comments, //go: directives, leading comments, in-body comments, inline
-// comments, and trailing orphan comments when the matched declaration is at the
-// end of the file. Moves that can silently change semantics, such as init
-// functions and partial implicit const blocks, are rejected. File-sensitive
-// cases such as generated files, build constraints, cgo, and dot imports are
-// rejected rather than rewritten heuristically. Copying (the default, without
-// -move) into the source's own directory is rejected: the source keeps the
-// declarations, so the package would gain duplicates; use -move for
-// same-directory splits, or copy into a different directory.
+// sflit moves or copies top-level Go declarations between files through the
+// AST, and refuses any operation that could change what the program means.
+// Files are re-parsed and reprinted through gofmt; imports are updated in
+// written files. Comments associated with moved declarations travel with
+// them, including doc comments, //go: directives, leading comments, in-body
+// comments, inline comments, and trailing orphan comments when the matched
+// declaration is at the end of the file. Grouped var/const/type blocks are
+// narrowed — matching specs travel, siblings stay. Operations that can
+// silently change semantics, such as init functions and partial implicit
+// const blocks, are rejected. File-sensitive cases such as generated files,
+// build constraints, cgo, and dot imports are rejected rather than rewritten
+// heuristically. Copying (the default, without -move) into the source's own
+// directory is rejected: the source keeps the declarations, so the package
+// would gain duplicates; use -move for same-directory splits, or copy into a
+// different directory.
 //
 // Usage:
 //
