@@ -23,8 +23,10 @@ func ExampleConfig_Validate() {
 	// invalid -regex: error parsing regexp: missing closing ]: `[invalid`
 }
 
-// ExampleRun copies a single function from source to sink. The source is
-// unchanged because Move is false.
+// ExampleRun copies a single function from source to a sink in another
+// directory. The source is unchanged because Move is false; copying into the
+// source's own directory is rejected because the package would gain
+// duplicate declarations.
 func ExampleRun() {
 	dir, err := os.MkdirTemp("", "sflit-example-")
 	if err != nil {
@@ -33,7 +35,7 @@ func ExampleRun() {
 	defer os.RemoveAll(dir)
 
 	src := filepath.Join(dir, "big.go")
-	sink := filepath.Join(dir, "filter.go")
+	sink := filepath.Join(dir, "filter", "filter.go")
 	_ = os.WriteFile(src, []byte(`package p
 
 func FilterA() {}

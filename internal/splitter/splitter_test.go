@@ -9,9 +9,11 @@ import (
 )
 
 func TestRun_EndToEnd_CopyRegex(t *testing.T) {
+	// Copy targets another directory: a same-directory copy is rejected
+	// because the source keeps the declarations (see TestRun_SameDirCopyBail).
 	dir := t.TempDir()
 	src := filepath.Join(dir, "big.go")
-	sink := filepath.Join(dir, "small.go")
+	sink := filepath.Join(dir, "sub", "small.go")
 	_ = os.WriteFile(src, []byte(`package p
 
 import "fmt"
@@ -98,6 +100,31 @@ func Other() {}
 	}
 	if res.DeclarationsRemaining != 1 {
 		t.Errorf("DeclarationsRemaining = %d, want 1", res.DeclarationsRemaining)
+	}
+}
+
+func TestRun_SameDirCopyBail(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.go")
+	sink := filepath.Join(dir, "b.go")
+	_ = os.WriteFile(src, []byte("package p\nfunc Filter(){}\n"), 0o600)
+	srcBefore, _ := os.ReadFile(filepath.Clean(src))
+
+	_, err := Run(Config{Source: src, Sink: sink, Regex: "^Filter"})
+	if err == nil {
+		t.Fatal("want same-directory copy err, got nil")
+	}
+	for _, want := range []string{"cannot copy within the same directory", "-move"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q missing %q", err, want)
+		}
+	}
+	if _, statErr := os.Stat(sink); !os.IsNotExist(statErr) {
+		t.Fatalf("sink should not exist after bail (stat err = %v)", statErr)
+	}
+	srcAfter, _ := os.ReadFile(filepath.Clean(src))
+	if !bytes.Equal(srcBefore, srcAfter) {
+		t.Fatal("src modified after bail")
 	}
 }
 

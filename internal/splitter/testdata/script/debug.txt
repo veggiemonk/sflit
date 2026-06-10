@@ -1,12 +1,12 @@
 # -debug prints structured logs to stderr.
-exec sflit -source big.go -sink small.go -regex '^Filter' -debug
+exec sflit -source big.go -sink sub/small.go -regex '^Filter' -debug
 stderr 'msg="parsed source"'
 stderr 'msg="selected declarations"'
 stderr 'msg="validation passed"'
 stderr 'msg="wrote file"'
 
 # Without -debug, no log output.
-exec sflit -source big2.go -sink small2.go -regex '^Filter'
+exec sflit -source big2.go -sink sub2/small2.go -regex '^Filter'
 ! stderr 'msg='
 
 -- big.go --

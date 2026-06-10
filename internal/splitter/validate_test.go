@@ -1,6 +1,7 @@
 package splitter
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -34,7 +35,7 @@ func TestValidate_Collision(t *testing.T) {
 	_, sink := mustParse(t, "package p\nfunc Foo(){}\n")
 	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
 	ex := extractMatches(fset, src, ms)
-	plan := buildPlan(fset, nil, "src.go", "sink.go", src, sink, ex, false)
+	plan := buildPlan(fset, nil, "src.go", "sub/sink.go", src, sink, ex, false)
 	if err := validatePlan(
 		plan,
 		sink,
@@ -50,7 +51,7 @@ func TestValidate_BlankIdentifierDoesNotCollide(t *testing.T) {
 	_, sink := mustParse(t, "package p\nvar _ interface{} = nil\n")
 	ms, _ := selectDecls(src, Config{Regex: "^_$"})
 	ex := extractMatches(fset, src, ms)
-	plan := buildPlan(fset, nil, "src.go", "sink.go", src, sink, ex, false)
+	plan := buildPlan(fset, nil, "src.go", "sub/sink.go", src, sink, ex, false)
 	if err := validatePlan(plan, sink, src); err != nil {
 		t.Fatalf("blank identifiers should not collide, got %v", err)
 	}
@@ -85,7 +86,7 @@ func TestValidate_CollisionUsesGoPackageNamespace(t *testing.T) {
 			_, sink := mustParse(t, tt.sink)
 			ms, _ := selectDecls(src, Config{Regex: "^Foo"})
 			ex := extractMatches(fset, src, ms)
-			plan := buildPlan(fset, nil, "src.go", "sink.go", src, sink, ex, false)
+			plan := buildPlan(fset, nil, "src.go", "sub/sink.go", src, sink, ex, false)
 			if err := validatePlan(plan, sink, src); err == nil ||
 				!strings.Contains(err.Error(), "declaration Foo already exists in sink") {
 				t.Fatalf("want package namespace collision err, got %v", err)
@@ -122,8 +123,59 @@ func TestValidate_OK(t *testing.T) {
 	_, sink := mustParse(t, "package p\nfunc Bar(){}\n")
 	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
 	ex := extractMatches(fset, src, ms)
-	plan := buildPlan(fset, nil, "src.go", "sink.go", src, sink, ex, false)
+	plan := buildPlan(fset, nil, "src.go", "sub/sink.go", src, sink, ex, false)
 	if err := validatePlan(plan, sink, src); err != nil {
 		t.Fatalf("want nil, got %v", err)
+	}
+}
+
+func TestValidate_SameDirCopyRejected(t *testing.T) {
+	fset, src := mustParse(t, "package p\nfunc Foo(){}\n")
+	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
+	ex := extractMatches(fset, src, ms)
+	plan := buildPlan(fset, nil, "src.go", "sink.go", src, nil, ex, false)
+	err := validatePlan(plan, nil, src)
+	if err == nil {
+		t.Fatal("want same-directory copy err, got nil")
+	}
+	for _, want := range []string{"cannot copy within the same directory", "-move"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("error %q missing %q", err, want)
+		}
+	}
+}
+
+func TestValidate_SameDirCopyRejected_RelativeVsAbsoluteSpelling(t *testing.T) {
+	fset, src := mustParse(t, "package p\nfunc Foo(){}\n")
+	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
+	ex := extractMatches(fset, src, ms)
+	abs, err := filepath.Abs("sink.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan := buildPlan(fset, nil, "./src.go", abs, src, nil, ex, false)
+	if err := validatePlan(plan, nil, src); err == nil ||
+		!strings.Contains(err.Error(), "cannot copy within the same directory") {
+		t.Fatalf("want same-directory copy err for mixed path spellings, got %v", err)
+	}
+}
+
+func TestValidate_SameDirMoveAllowed(t *testing.T) {
+	fset, src := mustParse(t, "package p\nfunc Foo(){}\nfunc Bar(){}\n")
+	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
+	ex := extractMatches(fset, src, ms)
+	plan := buildPlan(fset, nil, "src.go", "sink.go", src, nil, ex, true)
+	if err := validatePlan(plan, nil, src); err != nil {
+		t.Fatalf("same-directory move should be allowed, got %v", err)
+	}
+}
+
+func TestValidate_CrossDirCopyAllowed(t *testing.T) {
+	fset, src := mustParse(t, "package p\nfunc Foo(){}\n")
+	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
+	ex := extractMatches(fset, src, ms)
+	plan := buildPlan(fset, nil, "src.go", "sub/sink.go", src, nil, ex, false)
+	if err := validatePlan(plan, nil, src); err != nil {
+		t.Fatalf("cross-directory copy should be allowed, got %v", err)
 	}
 }

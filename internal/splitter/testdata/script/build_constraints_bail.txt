@@ -7,18 +7,19 @@ stderr 'cannot move build-constrained declarations into sink with different buil
 cmp a.go a_before.go
 cmp b.go b_before.go
 
-# Unconstrained source declarations cannot be copied into a constrained sink.
+# Unconstrained source declarations cannot be copied into a constrained sink
+# (sink lives in another directory; same-directory copies are rejected earlier).
 # Expect: non-zero exit, stderr identifies build constraint mismatch, files unchanged.
 cp unconstrained.go unconstrained_before.go
-cp constrained_sink.go constrained_sink_before.go
-! exec sflit -source unconstrained.go -sink constrained_sink.go -regex '^Baz'
+cp sub/constrained_sink.go constrained_sink_before.go
+! exec sflit -source unconstrained.go -sink sub/constrained_sink.go -regex '^Baz'
 stderr 'cannot move declarations into sink with different build constraints'
 cmp unconstrained.go unconstrained_before.go
-cmp constrained_sink.go constrained_sink_before.go
+cmp sub/constrained_sink.go constrained_sink_before.go
 
 # Matching build constraints are allowed.
-exec sflit -source linux.go -sink linux_extra.go -regex '^Foo'
-cmp linux_extra.go expected_linux_extra.go
+exec sflit -source linux.go -sink sub/linux_extra.go -regex '^Foo'
+cmp sub/linux_extra.go expected_linux_extra.go
 
 -- a.go --
 //go:build linux
@@ -35,7 +36,7 @@ func Bar() {}
 package p
 
 func Baz() {}
--- constrained_sink.go --
+-- sub/constrained_sink.go --
 //go:build linux
 // +build linux
 
@@ -49,7 +50,7 @@ func Qux() {}
 package p
 
 func Foo() {}
--- linux_extra.go --
+-- sub/linux_extra.go --
 //go:build linux
 // +build linux
 

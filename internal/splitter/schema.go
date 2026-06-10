@@ -28,7 +28,7 @@ func toolSchemaJSON() []byte {
 				},
 				"move": map[string]any{
 					"type":        "boolean",
-					"description": "Delete matched declarations from source after writing sink",
+					"description": "Delete matched declarations from source after writing sink. Required when sink is in the same directory as source: copying there would duplicate declarations.",
 					"default":     false,
 				},
 				"json": map[string]any{
@@ -52,6 +52,7 @@ func toolSchemaJSON() []byte {
 			"moves between source and sink files with different or absent build constraints on either side",
 			"cgo source files using import C",
 			"source files with dot imports",
+			"copying (move=false) into a sink in the source's own directory, because the source keeps the declarations and the package would gain duplicates; use move=true or a sink in a different directory",
 		},
 		"selection_rules": []map[string]string{
 			{
@@ -66,11 +67,11 @@ func toolSchemaJSON() []byte {
 		},
 		"examples": []map[string]any{
 			{
-				"description": "Copy declarations matching a regex",
-				"command":     "sflit -source big.go -regex '^Filter' -sink filter.go -json",
+				"description": "Copy declarations matching a regex into another directory (same-directory copy is rejected; use move)",
+				"command":     "sflit -source big.go -regex '^Filter' -sink otherpkg/filter.go -json",
 				"output": map[string]any{
 					"source":                 "big.go",
-					"sink":                   "filter.go",
+					"sink":                   "otherpkg/filter.go",
 					"move":                   false,
 					"matched":                []string{"FilterByName", "FilterByAge"},
 					"declarations_remaining": 15,
@@ -105,7 +106,7 @@ func toolSchemaJSON() []byte {
 		},
 		"exit_codes": map[string]string{
 			"0": "Success",
-			"1": "Operation error (collision, package mismatch, build-constraint mismatch, generated/cgo/dot-import source, parse error, no matches, write error)",
+			"1": "Operation error (collision, package mismatch, same-directory copy, build-constraint mismatch, generated/cgo/dot-import source, parse error, no matches, write error)",
 			"2": "Flag/usage error (invalid flags or missing required arguments)",
 		},
 	}

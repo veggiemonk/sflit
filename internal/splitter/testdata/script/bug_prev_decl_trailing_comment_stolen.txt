@@ -10,9 +10,11 @@ cmp a.go expected_a.go
 cmp b.go expected_b.go
 
 # copy: source untouched on disk, sink free of the stolen comment.
-exec sflit -source c.go -sink d.go -regex '^Copied$'
+# Sink goes to another directory: same-dir copies are rejected.
+mkdir other
+exec sflit -source c.go -sink other/d.go -regex '^Copied$'
 cmp c.go c_orig.go
-cmp d.go expected_d.go
+cmp other/d.go expected_d.go
 
 # move: previous decl is a FuncDecl with a trailing `} // note` comment.
 exec sflit -source e.go -sink f.go -regex '^Moved$' -move
