@@ -1,6 +1,7 @@
 package splitter
 
 import (
+	"go/ast"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -177,5 +178,38 @@ func TestValidate_CrossDirCopyAllowed(t *testing.T) {
 	plan := buildPlan(fset, nil, "src.go", "sub/sink.go", src, nil, ex, false)
 	if err := validatePlan(plan, nil, src); err != nil {
 		t.Fatalf("cross-directory copy should be allowed, got %v", err)
+	}
+}
+
+// A validation failure must leave the parsed source AST exactly as parsed:
+// no decl drops, no spec splices, no comment consumption. This pins the
+// pipeline ordering (select/extract/buildPlan are read-only; mutation only
+// happens in applyMove, which Run calls after validatePlan succeeds).
+func TestValidate_FailureLeavesSourceUntouched(t *testing.T) {
+	fset, src := mustParse(t, `package p
+
+type (
+	Helper struct{}
+	Target struct{} // travels with Target
+)
+`)
+	_, sink := mustParse(t, "package p\ntype Target struct{}\n")
+	ms, err := selectDecls(src, Config{Regex: "^Target$", Move: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ex := extractMatches(fset, src, ms)
+	plan := buildPlan(fset, nil, "src.go", "sink.go", src, sink, ex, true)
+	if err := validatePlan(plan, sink, src); err == nil ||
+		!strings.Contains(err.Error(), "already exists in sink") {
+		t.Fatalf("want collision err, got %v", err)
+	}
+	// Validation failed before applyMove: source must be pristine.
+	gd := src.Decls[0].(*ast.GenDecl)
+	if len(gd.Specs) != 2 {
+		t.Fatalf("failed validation left source group spliced: %d specs", len(gd.Specs))
+	}
+	if len(src.Comments) != 1 {
+		t.Fatalf("failed validation consumed source comments: %d groups remain, want 1", len(src.Comments))
 	}
 }

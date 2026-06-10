@@ -67,9 +67,24 @@ func (a App) M() {}
 	if !found {
 		t.Fatalf("trailing orphan comment not attached to last matched decl")
 	}
+	// Extraction is read-only on the source: the orphan must still be in
+	// f.Comments until the move is applied post-validation.
+	found = false
 	for _, cg := range f.Comments {
 		if strings.Contains(cg.Text(), "trailing orphan") {
-			t.Fatalf("trailing orphan still present in source file.Comments")
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("extractMatches mutated source file.Comments before applyMove")
+	}
+	// After the move is committed, the orphan must leave the source so it
+	// never prints twice.
+	plan := buildPlan(fset, nil, "src.go", "sink.go", f, nil, ex, true)
+	plan.applyMove()
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "trailing orphan") {
+			t.Fatalf("trailing orphan still present in source file.Comments after applyMove")
 		}
 	}
 }
@@ -198,9 +213,12 @@ func Keep() {}
 	if !found {
 		t.Fatalf("matched decl's own trailing comment did not travel")
 	}
+	// Extraction is read-only; the comment leaves the source via applyMove.
+	plan := buildPlan(fset, nil, "src.go", "sink.go", f, nil, ex, true)
+	plan.applyMove()
 	for _, cg := range f.Comments {
 		if strings.Contains(cg.Text(), "travels with Matched") {
-			t.Fatalf("travelled comment still present in source file.Comments")
+			t.Fatalf("travelled comment still present in source file.Comments after applyMove")
 		}
 	}
 }

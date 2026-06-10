@@ -8,26 +8,32 @@ import (
 // Extracted is one match staged for the sink: the decl plus every comment
 // group that must travel with it (free-floating leads, attached docs, inline
 // trailing comments, in-body free comments, and trailing-orphan comments
-// when this is the last matched decl).
+// when this is the last matched decl). Origin is carried over from the
+// Match so Plan.applyMove can splice synthetic specs out of the source
+// group on move.
 type Extracted struct {
 	Decl      ast.Decl
 	LeadComms []*ast.CommentGroup
+	Origin    *SpecOrigin // non-nil for synthetic matches
 }
 
-// extractMatches detaches matched decls from file.Decls and gathers every
-// comment group that travels with them. For each non-synthetic match, the
-// span (prevDeclEnd, decl.End()] is swept so leading free-floating
-// comments, attached doc comments, in-body comments, and trailing inline
-// comments all come along. A comment group starting on the same line as a
-// decl's End() belongs to that decl: the sweep skips groups on the
-// previous boundary's last line (they stay with the unmoved decl or
-// package clause) and extends to groups on the matched decl's own last
-// line. When the last decl(s) in the file are all matched, comments after
-// the final unmoved decl (or package clause) travel with the last matched
-// decl. For synthetic matches (specs spliced out of a partial GenDecl),
+// extractMatches gathers, for each matched decl, every comment group that
+// travels with it to the sink. For each non-synthetic match, the span
+// (prevDeclEnd, decl.End()] is swept so leading free-floating comments,
+// attached doc comments, in-body comments, and trailing inline comments
+// all come along. A comment group starting on the same line as a decl's
+// End() belongs to that decl: the sweep skips groups on the previous
+// boundary's last line (they stay with the unmoved decl or package
+// clause) and extends to groups on the matched decl's own last line.
+// When the last decl(s) in the file are all matched, comments after the
+// final unmoved decl (or package clause) travel with the last matched
+// decl. For synthetic matches (specs split out of a partial GenDecl),
 // spec-level Doc/Comment groups are captured directly from the spec
-// nodes. Captured comments are removed from file.Comments so they never
-// print twice from the source.
+// nodes.
+//
+// extractMatches is read-only on file: captured comments are removed from
+// file.Comments by Plan.applyMove (move only, after validation) so they
+// never print twice from a moved-from source.
 func extractMatches(fset *token.FileSet, file *ast.File, matches []Match) []Extracted {
 	if len(matches) == 0 {
 		return nil
@@ -102,7 +108,11 @@ func extractMatches(fset *token.FileSet, file *ast.File, matches []Match) []Extr
 	out := make([]Extracted, 0, len(matches))
 	for _, m := range matches {
 		if m.Synthetic {
-			out = append(out, Extracted{Decl: m.Decl, LeadComms: syntheticLeadComms[m.Decl]})
+			out = append(out, Extracted{
+				Decl:      m.Decl,
+				LeadComms: syntheticLeadComms[m.Decl],
+				Origin:    m.Origin,
+			})
 		}
 	}
 	for _, d := range file.Decls {
@@ -110,23 +120,13 @@ func extractMatches(fset *token.FileSet, file *ast.File, matches []Match) []Extr
 			out = append(out, Extracted{Decl: d, LeadComms: perDecl[d]})
 		}
 	}
-
-	if len(consumed) > 0 {
-		kept := file.Comments[:0]
-		for _, cg := range file.Comments {
-			if !consumed[cg] {
-				kept = append(kept, cg)
-			}
-		}
-		file.Comments = kept
-	}
 	return out
 }
 
 // commentsOfDecl gathers comment groups attached to a decl's AST nodes.
 // Used for synthetic matches whose comments live in the source file's
-// Comments slice — those cgs must travel to the sink and be removed
-// from the source so they print exactly once.
+// Comments slice — those cgs must travel to the sink and, on move, be
+// removed from the source (Plan.applyMove) so they print exactly once.
 func commentsOfDecl(d ast.Decl) []*ast.CommentGroup {
 	var out []*ast.CommentGroup
 	switch x := d.(type) {

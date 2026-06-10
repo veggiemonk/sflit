@@ -164,7 +164,8 @@ func (m MyStruct) Foo() {}
 			t.Fatalf("unexpected %q in %v", g, got)
 		}
 	}
-	// Also verify Helper still exists in the original file.Decls after mutation.
+	// Also verify Helper still exists in the original file.Decls; selection
+	// is read-only on the source.
 	var helperFound bool
 	for _, d := range f.Decls {
 		if gd, ok := d.(*ast.GenDecl); ok {
@@ -313,5 +314,51 @@ const (
 	_, err := selectDecls(f, Config{Regex: "^(A|C|D)$", Move: true})
 	if err == nil || !strings.Contains(err.Error(), "cannot partially move const block with implicit expressions") {
 		t.Fatalf("got err %v, want implicit const partial move rejection", err)
+	}
+}
+
+// Selection must be pure: it describes what to take without touching the
+// source AST, in both copy and move mode. The move-time splice happens in
+// Plan.applyMove, after validation.
+func TestSelectDecls_PureOnPartialTypeGroup(t *testing.T) {
+	for _, move := range []bool{false, true} {
+		_, f := mustParse(t, `package p
+
+type (
+	Helper struct{}
+	Target struct{}
+)
+`)
+		ms, err := selectDecls(f, Config{Regex: "^Target$", Move: move})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ms) != 1 || !ms[0].Synthetic || ms[0].Origin == nil {
+			t.Fatalf("move=%v: want one synthetic match with origin, got %+v", move, ms)
+		}
+		gd := f.Decls[0].(*ast.GenDecl)
+		if len(gd.Specs) != 2 {
+			t.Fatalf("move=%v: selectDecls mutated source group: %d specs remain, want 2",
+				move, len(gd.Specs))
+		}
+	}
+}
+
+func TestSelectDecls_PureOnPartialMultiNameValueSpec(t *testing.T) {
+	_, f := mustParse(t, `package p
+
+var a, b = 1, 2
+`)
+	ms, err := selectDecls(f, Config{Regex: "^a$", Move: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || !ms[0].Synthetic || ms[0].Origin == nil {
+		t.Fatalf("want one synthetic match with origin, got %+v", ms)
+	}
+	vs := f.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+	if len(vs.Names) != 2 || len(vs.Values) != 2 {
+		t.Fatalf("selectDecls mutated source value spec: names=%d values=%d, want 2/2",
+			len(vs.Names), len(vs.Values))
 	}
 }

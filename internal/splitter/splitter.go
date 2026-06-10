@@ -85,6 +85,11 @@ func Run(cfg Config) (Result, error) {
 	}
 	log.Info("validation passed")
 
+	// Only now — after validation, and only on move — is the source AST
+	// mutated. Selection, extraction, and plan building are read-only on
+	// the source, so a copy or a failed validation never alters it.
+	plan.applyMove()
+
 	srcBytes, sinkBytes, err := renderFiles(plan)
 	if err != nil {
 		return Result{}, err
