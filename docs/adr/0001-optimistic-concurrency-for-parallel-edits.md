@@ -4,7 +4,8 @@ Date: 2026-06-10
 
 ## Status
 
-Accepted (2026-06-10)
+Accepted (2026-06-10). Amended 2026-06-10: windows support is best-effort
+(see Amendment 1).
 
 ## Context
 
@@ -35,7 +36,10 @@ Forces at play:
   would need full serialization.
 - Self-contained binary, minimal dependencies ("a little copying is better
   than a little dependency").
-- Must work on darwin, linux, and windows.
+- Must work on darwin and linux. Windows is best-effort (amended
+  2026-06-10): the lock protocol must stay correct there, but it is verified
+  by cross-compilation only, and unix-only refinements are acceptable when
+  windows degrades gracefully instead of breaking.
 
 ## Decision
 
@@ -176,7 +180,9 @@ Harder / costs:
 - `parseGoFile` must parse from bytes so the hash and the AST come from the
   same read — a small refactor touching every parse call.
 - Two platform-specific lock files to maintain (unix/windows), plus ~40 copied
-  lines to attribute and keep an eye on.
+  lines to attribute and keep an eye on. The windows file is best-effort
+  (amended 2026-06-10): gated by `GOOS=windows` cross-compilation, no windows
+  runtime CI.
 - Concurrency tests are timing-sensitive by nature; the mid-commit mutation
   hook adds a test-only seam to `Config`.
 - Retry re-runs the full pipeline (parse, select, render). At sflit file sizes
@@ -207,3 +213,39 @@ Harder / costs:
   revisit with `fcntl`-style locks or require local filesystems explicitly.
 - When/if the Go standard library gains a public cross-platform file-locking
   API, drop the copied platform code.
+- If windows users materialize (bug reports, or windows runtime CI is added),
+  re-promote windows to first-class: implement sidecar unlink with
+  `FILE_DISPOSITION_POSIX_SEMANTICS` and keep the acquire-side identity
+  recheck (`os.SameFile` already compares volume serial + file index on
+  windows, so the shared acquire loop needs no change).
+
+## Amendment 1 (2026-06-10): windows support is best-effort
+
+Windows is demoted from a first-class target ("must work on darwin, linux,
+and windows") to best-effort: the concurrency protocol must remain *correct*
+on windows — the `LockFileEx` path in `lock_windows.go` stays, and concurrent
+sflit runs still exclude each other there — but it is verified by
+`GOOS=windows` cross-compilation only (no windows runtime CI), and unix-only
+refinements are acceptable when windows degrades gracefully instead of
+breaking.
+
+The forcing decision is sidecar lock cleanup (previously deferred in
+TODO.md). The litter is the one user-visible cost of the chosen design, and
+sound cleanup is platform-asymmetric:
+
+- **unix:** the release path unlinks the sidecar *while still holding the
+  lock*; the acquire path, after locking, verifies the locked fd and the
+  path still name the same file (`os.SameFile`, i.e. dev+inode) and retries
+  on mismatch. Naive unlink without the recheck is unsound: a third process
+  can lock a freshly created sidecar while a waiter holds the unlinked one —
+  two lock holders. A few lines, fully testable here.
+- **windows:** deleting an open file requires
+  `FILE_DISPOSITION_POSIX_SEMANTICS` (Win10+, NTFS only) — more copied
+  `x/sys` plumbing for a code path this repo cannot run-test. Rejected under
+  best-effort support. The sidecar is simply never unlinked on windows;
+  because nothing unlinks it, the fresh-inode race cannot occur and the
+  acquire-side recheck passes trivially — the shared protocol stays uniform.
+
+Consequence: lock files are cleaned up on darwin/linux; on windows they
+remain (inert, safe to gitignore), and user-facing docs say so instead of
+"left behind by design" on all platforms.
