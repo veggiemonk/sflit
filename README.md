@@ -5,8 +5,30 @@ The go file splitter.
 > File boundaries are not important in Go and a tool to split files sounds questionable.
 
 The use cases for splitting files are:
-1. token efficient
-2. for the agent to read and have more context by the file name.
+
+1. **Token efficiency and edit reliability.** Reading a 5000-line file burns
+   tokens; editing it is worse — string-replacement edits are far more
+   reliable in a 200-line file, and when an agent changes a small file, only
+   that file needs re-reading while the rest of the package stays cached.
+2. **Context by file name.** An agent (or a human) scanning a directory gets a
+   map of the package from the file names alone, and reads only the file that
+   matters.
+3. **Parallel editing without contention.** A huge file is a serialization
+   point: two agents — or an agent and a human — editing it collide with merge
+   conflicts and stomped edits. After a split, work on disjoint features
+   touches disjoint files.
+4. **Reviewable pure-move commits.** Because moves are semantically accurate
+   and anything risky is rejected, a split can land as a commit that contains
+   only moves — a reviewer verifies the partition, not the code, and the
+   behavioral change lands separately.
+5. **Moving declarations, not just splitting.** The sink can be an existing
+   file, so the same operation merges over-split files back together,
+   relocates a stray declaration to the file where it belongs, or undoes a
+   split that broke the build.
+6. **Test-file parity.** `_test.go` files split the same way, so the test
+   layout can mirror the source layout (`foo.go` / `foo_test.go`).
+7. **Enforcing a file-size policy.** If your team caps files at N lines, the
+   linter flags and `sflit` remediates — no risky hand refactor.
 
 Refactoring a file of more than 5000 lines consumed so many tokens and doing it manually was pretty painful. 
 It is not about code quality or taste, just pure efficiency and speed.
