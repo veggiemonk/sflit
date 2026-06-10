@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 )
 
@@ -30,13 +31,23 @@ type commit struct {
 }
 
 // lockAll acquires the sidecar lock of every snapshot path in sorted order
-// and returns one release for all of them.
+// and returns one release for all of them. The order must agree across
+// processes regardless of how each spelled the paths (cwd-relative vs
+// absolute), so paths are canonicalized before sorting; deduping keeps
+// aliased snapshots of one file from self-deadlocking on a second fd of
+// the same sidecar. Symlink aliases are not resolved
+// (filepath.EvalSymlinks fails on not-yet-existing sinks).
 func (c commit) lockAll() (release func(), err error) {
 	paths := make([]string, 0, len(c.snaps))
 	for _, s := range c.snaps {
-		paths = append(paths, s.path)
+		p, err := filepath.Abs(s.path)
+		if err != nil {
+			return nil, fmt.Errorf("lock %s: %w", s.path, err)
+		}
+		paths = append(paths, p)
 	}
 	sort.Strings(paths)
+	paths = slices.Compact(paths)
 	releases := make([]func() error, 0, len(paths))
 	release = func() {
 		for i := len(releases) - 1; i >= 0; i-- {

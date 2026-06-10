@@ -3,6 +3,7 @@ package splitter
 import (
 	"go/ast"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -55,6 +56,17 @@ func TestValidate_BlankIdentifierDoesNotCollide(t *testing.T) {
 	plan := buildPlan(fset, nil, "src.go", "sub/sink.go", src, sink, ex, false)
 	if err := validatePlan(plan, sink, src); err != nil {
 		t.Fatalf("blank identifiers should not collide, got %v", err)
+	}
+}
+
+func TestCollisionKeys_ParenthesizedReceiver(t *testing.T) {
+	// Legal but rare: a parenthesized receiver type must still produce a
+	// collision key, or duplicate methods slip past validatePlan.
+	_, f := mustParse(t, "package p\nfunc (r (*T)) M() {}\n")
+	got := collisionKeys(f.Decls[0])
+	want := []string{"T.M"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("collisionKeys: got %v want %v", got, want)
 	}
 }
 

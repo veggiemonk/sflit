@@ -4,7 +4,9 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestWritePair_BothSucceed(t *testing.T) {
@@ -35,6 +37,67 @@ func TestWritePair_NewSink(t *testing.T) {
 	got, _ := os.ReadFile(filepath.Clean(k))
 	if string(got) != "B" {
 		t.Fatalf("sink: %q", got)
+	}
+}
+
+// TestLockAllCanonicalOrdering regresses an AB-BA deadlock: lock order must
+// be process-independent, so lockAll has to canonicalize paths before
+// sorting. Here the same two files are spelled so the raw strings sort in
+// opposite orders ("z/.." places the a.go alias lexically after b.go);
+// without canonicalization the two committers lock in opposite order and
+// block forever in flock, which has no deadlock detection.
+func TestLockAllCanonicalOrdering(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.go")
+	b := filepath.Join(dir, "b.go")
+	aAlias := filepath.FromSlash(dir + "/z/../a.go")
+	c1 := commit{snaps: []fileSnapshot{{path: a}, {path: b}}}
+	c2 := commit{snaps: []fileSnapshot{{path: b}, {path: aAlias}}}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		var wg sync.WaitGroup
+		for _, c := range []commit{c1, c2} {
+			wg.Go(func() {
+				for range 200 {
+					release, err := c.lockAll()
+					if err != nil {
+						t.Error(err)
+						return
+					}
+					release()
+				}
+			})
+		}
+		wg.Wait()
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("deadlock: lockAll lock order differs across path spellings")
+	}
+}
+
+// TestLockAllDuplicatePaths regresses a self-deadlock: locks exclude between
+// file descriptors, so two snapshots naming the same file must collapse to
+// one sidecar lock instead of blocking forever on a second fd.
+func TestLockAllDuplicatePaths(t *testing.T) {
+	p := filepath.Join(t.TempDir(), "a.go")
+	c := commit{snaps: []fileSnapshot{{path: p}, {path: p}}}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		release, err := c.lockAll()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		release()
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("deadlock: duplicate snapshot paths must collapse to one lock")
 	}
 }
 

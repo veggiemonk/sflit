@@ -87,6 +87,8 @@ func receiverBaseName(expr ast.Expr) string {
 		return t.Name
 	case *ast.StarExpr:
 		return receiverBaseName(t.X)
+	case *ast.ParenExpr: // (T), (*T)
+		return receiverBaseName(t.X)
 	case *ast.IndexExpr: // R[T]
 		if id, ok := t.X.(*ast.Ident); ok {
 			return id.Name
