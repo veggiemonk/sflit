@@ -16,6 +16,27 @@ type Config struct {
 	Regex    string
 	Receiver string
 	Move     bool
+	// Retries bounds how many times Run re-runs the pipeline after a
+	// commit-time conflict (a concurrent writer changed source or sink
+	// between parse and commit). 0 means the default of 5; conflicts are
+	// the expected mechanism under parallel invocations (ADR-0001), so
+	// retry cannot be disabled.
+	Retries int
+
+	// testHookBeforeCommit, when set, runs between render and commit on
+	// every attempt. Test-only seam for injecting mid-flight writers.
+	testHookBeforeCommit func()
+}
+
+// defaultRetries is the retry bound applied when Config.Retries is zero.
+const defaultRetries = 5
+
+// retries returns the effective conflict-retry bound.
+func (c Config) retries() int {
+	if c.Retries <= 0 {
+		return defaultRetries
+	}
+	return c.Retries
 }
 
 // logger returns the configured logger, or a no-op discard logger.

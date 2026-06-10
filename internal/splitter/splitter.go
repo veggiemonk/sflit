@@ -48,13 +48,34 @@ import (
 	"github.com/veggiemonk/sflit/internal/version"
 )
 
-// Run executes the full pipeline for the given Config.
+// Run executes the full pipeline for the given Config, re-running it on
+// commit-time conflicts up to the Config.Retries bound. Selection is
+// semantic, so a re-run against fresh content is well-defined: disjoint
+// concurrent selections commute, overlapping ones resolve to "no matches"
+// or a sink collision on the later run (ADR-0001).
 func Run(cfg Config) (Result, error) {
-	log := cfg.logger()
-
 	if err := cfg.Validate(); err != nil {
 		return Result{}, err
 	}
+	retries := cfg.retries()
+	var err error
+	for attempt := 0; attempt <= retries; attempt++ {
+		var res Result
+		res, err = runOnce(cfg)
+		if !errors.Is(err, errConflict) {
+			return res, err
+		}
+		cfg.logger().Info("commit conflict, retrying", "attempt", attempt+1, "of", retries+1)
+	}
+	return Result{}, fmt.Errorf("gave up after %d attempts: %w", retries+1, err)
+}
+
+// runOnce executes one optimistic attempt: parse, select, plan, render,
+// commit. A concurrent writer landing between parse and commit surfaces as
+// errConflict with nothing written.
+func runOnce(cfg Config) (Result, error) {
+	log := cfg.logger()
+
 	fset, src, srcSnap, err := parseGoFile(cfg.Source)
 	if err != nil {
 		return Result{}, err
@@ -93,6 +114,9 @@ func Run(cfg Config) (Result, error) {
 	srcBytes, sinkBytes, err := renderFiles(plan)
 	if err != nil {
 		return Result{}, err
+	}
+	if cfg.testHookBeforeCommit != nil {
+		cfg.testHookBeforeCommit()
 	}
 	// The commit verifies both pre-images under lock: even a copy, which
 	// only writes the sink, conflicts if the source it was rendered from
