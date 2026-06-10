@@ -1,0 +1,30 @@
+# Copy mode (the default) into a sink in the same directory would leave the
+# package with duplicate top-level declarations: the source keeps every
+# selected decl and the sink gains a copy.
+# Expect: exit 1, actionable error suggesting -move, no sink written.
+cp a.go a_before.go
+! exec sflit -source a.go -regex '^Filter$' -sink b.go
+stderr 'cannot copy within the same directory'
+stderr 'use -move'
+! exists b.go
+cmp a.go a_before.go
+
+# The same invocation with -move is the supported same-directory split.
+exec sflit -source a.go -regex '^Filter$' -sink b.go -move
+cmp a.go expected_a.go
+cmp b.go expected_b.go
+
+-- a.go --
+package probe
+
+func Filter() {}
+
+func Keep() {}
+-- expected_a.go --
+package probe
+
+func Keep() {}
+-- expected_b.go --
+package probe
+
+func Filter() {}

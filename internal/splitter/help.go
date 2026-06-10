@@ -30,17 +30,21 @@ Selection rules:
 
 At least one of -regex or -receiver is required.
 
-Blocked moves:
-  - init functions are rejected because moving them may change package
-    initialization order.
-  - Partial moves from const blocks with iota or implicit expressions are
-    rejected; move the whole block or refactor constants manually first.
-  - Partial moves from multi-name var/const specs are rejected unless each
+Blocked splits (copy and move alike):
+  - init functions are rejected: moving them may change package
+    initialization order, and copying duplicates init so it runs twice.
+  - Partial splits of const blocks with iota or implicit expressions are
+    rejected; select the whole block or refactor constants manually first.
+  - Partial splits of multi-name var/const specs are rejected unless each
     name has a corresponding explicit value.
   - Generated source files are rejected.
   - Files with build constraints can only move into sinks with identical
     build constraints.
   - Files using cgo import "C" or dot imports are rejected.
+  - Copying (without -move) into a sink in the source's own directory is
+    rejected: the source keeps the declarations, so the package would gain
+    duplicates and stop compiling. Use -move, or copy into a different
+    directory.
 
 Comments:
   Comments associated with moved declarations travel with them, including
@@ -49,8 +53,12 @@ Comments:
   when the matched declaration is at the end of the file.
 
 Examples:
-  # Copy declarations matching a regex
-  sflit -source big.go -regex '^Filter' -sink filter.go
+  # Split a file: move declarations matching a regex into a new file
+  sflit -source big.go -regex '^Filter' -sink filter.go -move
+
+  # Copy declarations into another directory
+  # (copying within the same directory would duplicate them; use -move)
+  sflit -source big.go -regex '^Filter' -sink otherpkg/filter.go
 
   # Move a type and all its methods
   sflit -source big.go -receiver MyStruct -sink my_struct.go -move
@@ -67,8 +75,9 @@ Other:
 
 Exit codes:
   0  Success
-  1  Operation error (collision, package mismatch, build-constraint mismatch,
-     generated/cgo/dot-import source, parse error, no matches, write error)
+  1  Operation error (collision, package mismatch, same-directory copy,
+     build-constraint mismatch, generated/cgo/dot-import source, parse error,
+     no matches, write error)
   2  Flag/usage error (invalid flags or missing required arguments)
 `
 

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"path/filepath"
 	"strings"
 )
 
@@ -127,6 +128,23 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 			plan.SinkPath, origSink.Name.Name, plan.SrcPath, origSrc.Name.Name,
 		)
 	}
+	// Same-directory copy: the source keeps every selected declaration, so a
+	// sink in the same directory (same package) would gain duplicates and the
+	// package would no longer compile. Copying is only valid into a different
+	// directory (same package name, different package).
+	if !plan.Move {
+		same, err := sameDir(plan.SrcPath, plan.SinkPath)
+		if err != nil {
+			return err
+		}
+		if same {
+			return fmt.Errorf(
+				"cannot copy within the same directory: source %s and sink %s are in the same package, so the copied declarations would duplicate the originals and the package would no longer compile; use -move to move them, or copy into a different directory",
+				plan.SrcPath,
+				plan.SinkPath,
+			)
+		}
+	}
 	if generated, err := isGeneratedFile(plan.SrcPath); err != nil {
 		return err
 	} else if generated {
@@ -171,6 +189,22 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 		}
 	}
 	return nil
+}
+
+// sameDir reports whether two file paths resolve to the same parent
+// directory. Comparison is on cleaned absolute paths, so relative and
+// absolute spellings of one directory match; symlinked aliases of a
+// directory are not resolved.
+func sameDir(a, b string) (bool, error) {
+	da, err := filepath.Abs(filepath.Dir(filepath.Clean(a)))
+	if err != nil {
+		return false, fmt.Errorf("resolve directory of %s: %w", a, err)
+	}
+	db, err := filepath.Abs(filepath.Dir(filepath.Clean(b)))
+	if err != nil {
+		return false, fmt.Errorf("resolve directory of %s: %w", b, err)
+	}
+	return da == db, nil
 }
 
 func validateBuildConstraints(plan Plan) error {

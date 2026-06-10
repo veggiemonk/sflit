@@ -20,8 +20,19 @@ const (
 
 type Match struct {
 	Decl      ast.Decl
+	Origin    *SpecOrigin
 	Kind      MatchKind
-	Synthetic bool // true when Decl was constructed and is not in file.Decls
+	Synthetic bool
+}
+
+// SpecOrigin points back into the source AST for a synthetic match: the
+// group GenDecl in file.Decls and the spec inside it that the synthetic
+// was split from. Names lists the matched name indices when only some
+// names of a multi-name ValueSpec matched; nil means the whole spec moves.
+type SpecOrigin struct {
+	Decl  *ast.GenDecl
+	Spec  ast.Spec
+	Names []int // nil = whole spec; else matched name indices within the ValueSpec
 }
 
 // selectDecls picks top-level declarations from file based on cfg:
@@ -58,10 +69,8 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 			case cfg.Receiver == "" && re != nil:
 				// regex-only: match funcs AND methods by name.
 				if re.MatchString(x.Name.Name) {
-					if cfg.Move {
-						if err := rejectInitMove(x); err != nil {
-							return nil, err
-						}
+					if err := rejectInitSplit(x); err != nil {
+						return nil, err
 					}
 					kind := KindFunc
 					if isMethod {
@@ -92,19 +101,23 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 	return out, nil
 }
 
-func rejectInitMove(fn *ast.FuncDecl) error {
+// rejectInitSplit applies in both copy and move mode: moving init may change
+// package initialization order, and copying duplicates it — Go allows
+// multiple init funcs, so the package compiles but runs init twice.
+func rejectInitSplit(fn *ast.FuncDecl) error {
 	if fn.Recv == nil && fn.Name != nil && fn.Name.Name == "init" {
 		return errors.New(
-			"cannot move init function: init order may change; refactor init body into a named function and move that instead",
+			"cannot split init function: copying duplicates it and moving may change init order; refactor init body into a named function and split that instead",
 		)
 	}
 	return nil
 }
 
 // selectGenDecl picks specs from a type/var/const GenDecl according to cfg.
-// Returns a []Match. Grouped decls with partial matches are split: the
-// source-side GenDecl is mutated to drop matched specs, and synthetic
-// single-spec GenDecls are emitted for the sink.
+// Returns a []Match. Grouped decls with partial matches are split: synthetic
+// single-spec GenDecls are emitted for the sink, each carrying a SpecOrigin
+// so the move-time splice can drop the spec from the source group after
+// validation (Plan.applyMove). The source AST is never mutated here.
 func selectGenDecl(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) ([]Match, error) {
 	switch gd.Tok {
 	case token.TYPE:
@@ -114,7 +127,7 @@ func selectGenDecl(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) ([]Match, err
 			// Receiver-only mode never matches vars/consts.
 			return nil, nil
 		}
-		return selectValueSpecs(gd, re, cfg.Move)
+		return selectValueSpecs(gd, re)
 	}
 	return nil, nil
 }
@@ -125,7 +138,6 @@ func selectGenDecl(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) ([]Match, err
 //   - regex-only: pick every TypeSpec whose name matches cfg.Regex.
 func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 	var out []Match
-	// Walk specs backwards so mutation-indices stay valid when we splice.
 	matchIdx := make([]int, 0, len(gd.Specs))
 	for i, s := range gd.Specs {
 		ts, ok := s.(*ast.TypeSpec)
@@ -154,21 +166,19 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 		out = append(out, Match{Decl: gd, Kind: KindTypeDecl})
 		return out
 	}
-	// Partial match → split. Build synthetics for matched specs, splice them out.
-	kept := gd.Specs[:0]
-	matched := make(map[int]bool, len(matchIdx))
+	// Partial match → split. Build synthetics for matched specs; the
+	// source group stays untouched and the splice is deferred to
+	// Plan.applyMove via Origin.
 	for _, i := range matchIdx {
-		matched[i] = true
+		s := gd.Specs[i]
+		syn := &ast.GenDecl{Tok: gd.Tok, Specs: []ast.Spec{s}}
+		out = append(out, Match{
+			Decl:      syn,
+			Kind:      KindTypeDecl,
+			Synthetic: true,
+			Origin:    &SpecOrigin{Decl: gd, Spec: s},
+		})
 	}
-	for i, s := range gd.Specs {
-		if matched[i] {
-			syn := &ast.GenDecl{Tok: gd.Tok, Specs: []ast.Spec{s}}
-			out = append(out, Match{Decl: syn, Kind: KindTypeDecl, Synthetic: true})
-			continue
-		}
-		kept = append(kept, s)
-	}
-	gd.Specs = kept
 	return out
 }
 
@@ -177,24 +187,28 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 // ValueSpec declaring multiple names (e.g. `var a, b = 1, 2`) is split
 // name-by-name into synthetic single-name specs. Three outcomes per
 // GenDecl:
-//  1. no names match → return nil, source untouched;
+//  1. no names match → return nil;
 //  2. every spec+name matches → return the whole gd as a single match
-//     so removeDecls strips it from the source entirely;
-//  3. partial match → emit synthetic per-name/per-spec matches; mutate
-//     the source gd to drop moved specs/names.
-func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp, move bool) ([]Match, error) {
-	if move {
-		if isIotaConstBlock(gd) {
-			if err := rejectPartialIotaConstMove(gd, re); err != nil {
-				return nil, err
-			}
-		}
-		if err := rejectPartialImplicitConstMove(gd, re); err != nil {
+//     so Plan.applyMove strips it from the source entirely on move;
+//  3. partial match → emit synthetic per-name/per-spec matches, each
+//     carrying a SpecOrigin describing the move-time splice.
+//
+// The source AST is never mutated here; mutation is deferred to
+// Plan.applyMove, after validation, and only on move.
+func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
+	// The guards below apply in both copy and move mode: they protect the
+	// sink's validity (a partially copied implicit spec renders as invalid
+	// Go) and package semantics, not just the source.
+	if isIotaConstBlock(gd) {
+		if err := rejectPartialIotaConstSplit(gd, re); err != nil {
 			return nil, err
 		}
-		if err := rejectUnsafePartialMultiNameValueSpec(gd, re); err != nil {
-			return nil, err
-		}
+	}
+	if err := rejectPartialImplicitConstSplit(gd, re); err != nil {
+		return nil, err
+	}
+	if err := rejectUnsafePartialMultiNameValueSpec(gd, re); err != nil {
+		return nil, err
 	}
 	type specMatch struct {
 		spec    *ast.ValueSpec
@@ -234,24 +248,26 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp, move bool) ([]Match, e
 	}
 
 	var out []Match
-	kept := gd.Specs[:0]
-	for i, pm := range per {
+	for _, pm := range per {
 		if pm.spec == nil || len(pm.names) == 0 {
-			// Non-ValueSpec or untouched ValueSpec — keep as-is.
-			kept = append(kept, gd.Specs[i])
+			// Non-ValueSpec or untouched ValueSpec — nothing to take.
 			continue
 		}
 		if pm.fullyIn {
 			syn := &ast.GenDecl{Tok: gd.Tok, Specs: []ast.Spec{pm.spec}}
-			out = append(out, Match{Decl: syn, Kind: KindValueDecl, Synthetic: true})
+			out = append(out, Match{
+				Decl:      syn,
+				Kind:      KindValueDecl,
+				Synthetic: true,
+				Origin:    &SpecOrigin{Decl: gd, Spec: pm.spec},
+			})
 			continue
 		}
 		// Partial name match within a multi-name ValueSpec. Split each
-		// moved name into its own synthetic; retain surviving names in
-		// the original spec (which stays in kept).
-		moved := make(map[int]bool, len(pm.names))
+		// taken name into its own synthetic single-name spec (sharing the
+		// original Ident/Type/Value nodes); the surviving names are
+		// trimmed from the original spec by Plan.applyMove on move.
 		for _, j := range pm.names {
-			moved[j] = true
 			split := &ast.ValueSpec{
 				Names: []*ast.Ident{pm.spec.Names[j]},
 				Type:  pm.spec.Type,
@@ -260,24 +276,14 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp, move bool) ([]Match, e
 				split.Values = []ast.Expr{pm.spec.Values[j]}
 			}
 			syn := &ast.GenDecl{Tok: gd.Tok, Specs: []ast.Spec{split}}
-			out = append(out, Match{Decl: syn, Kind: KindValueDecl, Synthetic: true})
+			out = append(out, Match{
+				Decl:      syn,
+				Kind:      KindValueDecl,
+				Synthetic: true,
+				Origin:    &SpecOrigin{Decl: gd, Spec: pm.spec, Names: []int{j}},
+			})
 		}
-		keptNames := pm.spec.Names[:0]
-		var keptValues []ast.Expr
-		for j, n := range pm.spec.Names {
-			if moved[j] {
-				continue
-			}
-			keptNames = append(keptNames, n)
-			if j < len(pm.spec.Values) {
-				keptValues = append(keptValues, pm.spec.Values[j])
-			}
-		}
-		pm.spec.Names = keptNames
-		pm.spec.Values = keptValues
-		kept = append(kept, pm.spec)
 	}
-	gd.Specs = kept
 	return out, nil
 }
 
@@ -293,7 +299,7 @@ func rejectUnsafePartialMultiNameValueSpec(gd *ast.GenDecl, re *regexp.Regexp) e
 		}
 		if len(vs.Values) != len(vs.Names) {
 			return fmt.Errorf(
-				"cannot partially move multi-name value spec: %d names share %d values; split the declaration manually first",
+				"cannot partially split multi-name value spec: %d names share %d values; split the declaration manually first",
 				len(vs.Names),
 				len(vs.Values),
 			)
@@ -323,8 +329,8 @@ func valueSpecPartiallyMatched(vs *ast.ValueSpec, re *regexp.Regexp) bool {
 
 // isIotaConstBlock reports whether gd is a const block with any value
 // expression containing the predeclared identifier `iota`. Subsequent specs in
-// such a block may implicitly inherit the iota chain, so partial moves are
-// rejected; callers must move the whole block or refactor manually.
+// such a block may implicitly inherit the iota chain, so partial splits are
+// rejected; callers must select the whole block or refactor manually.
 func isIotaConstBlock(gd *ast.GenDecl) bool {
 	if gd.Tok != token.CONST || len(gd.Specs) == 0 {
 		return false
@@ -357,7 +363,7 @@ func exprContainsIota(expr ast.Expr) bool {
 	return contains
 }
 
-func rejectPartialIotaConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
+func rejectPartialIotaConstSplit(gd *ast.GenDecl, re *regexp.Regexp) error {
 	totalNames := 0
 	matchedNames := 0
 	for _, s := range gd.Specs {
@@ -376,13 +382,13 @@ func rejectPartialIotaConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"cannot partially move iota const block: selection matches %d of %d names; move the whole block or refactor it manually",
+		"cannot partially split iota const block: selection matches %d of %d names; select the whole block or refactor it manually",
 		matchedNames,
 		totalNames,
 	)
 }
 
-func rejectPartialImplicitConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
+func rejectPartialImplicitConstSplit(gd *ast.GenDecl, re *regexp.Regexp) error {
 	if gd.Tok != token.CONST || len(gd.Specs) == 0 {
 		return nil
 	}
@@ -412,6 +418,6 @@ func rejectPartialImplicitConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
 		return nil
 	}
 	return errors.New(
-		"cannot partially move const block with implicit expressions: move the whole block or make each const expression explicit",
+		"cannot partially split const block with implicit expressions: select the whole block or make each const expression explicit",
 	)
 }
