@@ -28,6 +28,11 @@ require (
 	golang.org/x/oauth2 v0.30.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/telemetry v0.0.0-20260508192327-42602be52be6 // indirect
+	golang.org/x/vuln v1.3.0 // indirect
 )
 
-tool github.com/sethvargo/ratchet
+tool (
+	github.com/sethvargo/ratchet
+	golang.org/x/vuln/cmd/govulncheck
+)
