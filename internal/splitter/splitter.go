@@ -19,7 +19,11 @@
 //   - [RunCLI] — CLI entry point invoked by the sflit binary.
 //
 // Guarantees on [Config.Move]: source and sink are written via temp-file +
-// rename so a crash leaves both files valid. Comments associated with moved
+// rename so a crash leaves both files valid. Concurrent invocations on the
+// same files are safe without external coordination: each run hashes source
+// and sink at parse and verifies both under a short per-file sidecar lock at
+// commit, re-running the pipeline on conflict up to [Config.Retries] times
+// (optimistic concurrency, see docs/adr/0001). Comments associated with moved
 // declarations travel with them, including doc comments, //go: directives,
 // leading comments, in-body comments, inline comments, and trailing orphan
 // comments when the matched declaration is at the end of the file. Moves that
@@ -197,6 +201,7 @@ func RunCLI(args []string, _ io.Reader, stdout io.Writer, stderr io.Writer) int 
 	fs.StringVar(&cfg.Regex, "regex", "", "name regex")
 	fs.StringVar(&cfg.Receiver, "receiver", "", "receiver type name")
 	fs.BoolVar(&cfg.Move, "move", false, "delete matched decls from source")
+	fs.IntVar(&cfg.Retries, "retries", defaultRetries, "max re-runs after a concurrent-write conflict")
 	fs.BoolVar(&jsonOutput, "json", false, "print structured JSON result to stdout")
 	fs.BoolVar(&debug, "debug", false, "print debug logs to stderr")
 	if err := fs.Parse(args); err != nil {

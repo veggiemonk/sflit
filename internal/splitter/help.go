@@ -16,6 +16,7 @@ Flags:
   -regex     string  Regex matched against declaration names
   -receiver  string  Receiver type name
   -move              Delete matched decls from source after writing (default: copy)
+  -retries   int     Max re-runs after a concurrent-write conflict (default: 5)
   -json              Print structured JSON result to stdout
   -debug             Print debug logs to stderr
 
@@ -45,6 +46,14 @@ Blocked splits (copy and move alike):
     rejected: the source keeps the declarations, so the package would gain
     duplicates and stop compiling. Use -move, or copy into a different
     directory.
+
+Concurrency:
+  Safe to fan out N concurrent invocations on the same files with no
+  external coordination. Each run hashes source and sink at parse and
+  verifies them under a short per-file lock at commit; if another writer
+  (sflit or not) changed a file in between, the run re-runs against the
+  fresh content, up to -retries times. Sidecar lock files
+  (.<name>.sflit.lock) are left behind by design and are safe to ignore.
 
 Comments:
   Comments associated with moved declarations travel with them, including
@@ -77,7 +86,7 @@ Exit codes:
   0  Success
   1  Operation error (collision, package mismatch, same-directory copy,
      build-constraint mismatch, generated/cgo/dot-import source, parse error,
-     no matches, write error)
+     no matches, write error, conflict retries exhausted)
   2  Flag/usage error (invalid flags or missing required arguments)
 `
 
