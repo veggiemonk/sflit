@@ -70,12 +70,12 @@ Selection rules:
 
 At least one of -regex or -receiver is required.
 
-Blocked moves:
-  - init functions are rejected because moving them may change package
-    initialization order.
-  - Partial moves from const blocks with iota or implicit expressions are
-    rejected; move the whole block or refactor constants manually first.
-  - Partial moves from multi-name var/const specs are rejected unless each
+Blocked splits (copy and move alike):
+  - init functions are rejected: moving them may change package
+    initialization order, and copying duplicates init so it runs twice.
+  - Partial splits of const blocks with iota or implicit expressions are
+    rejected; select the whole block or refactor constants manually first.
+  - Partial splits of multi-name var/const specs are rejected unless each
     name has a corresponding explicit value.
   - Generated source files are rejected.
   - Files with build constraints can only move into sinks with identical
@@ -141,7 +141,7 @@ schema source.
 - On package mismatch (sink's package differs from source's), `sflit` bails before writing.
 - On copy, only the sink is written; on move, source and sink are written via temp-file + rename.
 - Copying (the default, without `-move`) into the source's own directory is rejected before writing: the source keeps every selected declaration, so the package would gain duplicate names and stop compiling. Use `-move` for same-directory splits; copy targets a sink in a different directory.
-- `sflit` rejects moves that are likely to change semantics silently: `init` functions, partial `iota`/implicit const blocks, and unsafe partial multi-name value specs.
+- `sflit` rejects splits (copy and move alike) that are likely to change semantics silently or produce invalid Go: `init` functions, partial `iota`/implicit const blocks, and unsafe partial multi-name value specs.
 - `sflit` rejects generated files, cgo files, dot-import files, and build-constraint mismatches rather than guessing at file-sensitive semantics.
 - Blank identifier declarations such as interface assertions do not collide with each other.
 - Comments associated with moved declarations travel with them: doc comments, `//go:` directives, free-floating lead comments, in-body comments, inline spec/statement comments, and trailing orphan comments when the matched declaration is at the end of the file.

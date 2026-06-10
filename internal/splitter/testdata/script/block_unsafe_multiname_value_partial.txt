@@ -2,14 +2,25 @@
 # one-to-one to names. Calls and zero-value declarations are rejected.
 
 ! exec sflit -source call.go -sink call_small.go -regex '^a$' -move
-stderr 'cannot partially move multi-name value spec'
+stderr 'cannot partially split multi-name value spec'
 cmp call.go expected_call.go
 ! exists call_small.go
 
 ! exec sflit -source zero.go -sink zero_small.go -regex '^x$' -move
-stderr 'cannot partially move multi-name value spec'
+stderr 'cannot partially split multi-name value spec'
 cmp zero.go expected_zero.go
 ! exists zero_small.go
+
+# Copy mode (no -move) is rejected the same way.
+! exec sflit -source call.go -sink call_copy.go -regex '^a$'
+stderr 'cannot partially split multi-name value spec'
+cmp call.go expected_call.go
+! exists call_copy.go
+
+! exec sflit -source zero.go -sink zero_copy.go -regex '^x$'
+stderr 'cannot partially split multi-name value spec'
+cmp zero.go expected_zero.go
+! exists zero_copy.go
 
 # One-to-one values are still allowed.
 exec sflit -source explicit.go -sink explicit_small.go -regex '^m$' -move

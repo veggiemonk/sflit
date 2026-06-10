@@ -94,22 +94,21 @@ func TestSelectRegexOnly_NoMatch(t *testing.T) {
 	}
 }
 
-func TestSelectRegexOnly_InitCopyAllowed(t *testing.T) {
+func TestSelectRegexOnly_InitCopyRejected(t *testing.T) {
+	// Copying init into a same-package sink duplicates it: Go allows
+	// multiple init funcs, so it compiles but runs init twice.
 	_, f := mustParse(t, "package p\nfunc init(){}\n")
-	ms, err := selectDecls(f, Config{Regex: "^init$"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := matchNames(ms); len(got) != 1 || got[0] != "init" {
-		t.Fatalf("got %v, want [init]", got)
+	_, err := selectDecls(f, Config{Regex: "^init$"})
+	if err == nil || !strings.Contains(err.Error(), "cannot split init function") {
+		t.Fatalf("got err %v, want cannot split init function", err)
 	}
 }
 
 func TestSelectRegexOnly_InitMoveRejected(t *testing.T) {
 	_, f := mustParse(t, "package p\nfunc init(){}\n")
 	_, err := selectDecls(f, Config{Regex: "^init$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot move init function") {
-		t.Fatalf("got err %v, want cannot move init function", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot split init function") {
+		t.Fatalf("got err %v, want cannot split init function", err)
 	}
 }
 
@@ -254,8 +253,24 @@ const (
 )
 `)
 	_, err := selectDecls(f, Config{Regex: "^A$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially move iota const block") {
-		t.Fatalf("got err %v, want iota const partial move rejection", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split iota const block") {
+		t.Fatalf("got err %v, want iota const partial split rejection", err)
+	}
+}
+
+func TestSelectValueSpecs_RejectsPartialIotaConstCopy(t *testing.T) {
+	// Copy mode used to bypass the guard and emit `const B` — invalid Go.
+	_, f := mustParse(t, `package p
+
+const (
+	A = iota
+	B
+	C
+)
+`)
+	_, err := selectDecls(f, Config{Regex: "^B$"})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split iota const block") {
+		t.Fatalf("got err %v, want iota const partial split rejection", err)
 	}
 }
 
@@ -288,8 +303,10 @@ func TestSelectValueSpecs_RejectsPartialMultiNameConstWithoutOneToOneValues(t *t
 const a, b = 1
 const x, y = "same", "same"
 `)
-	if _, err := selectDecls(f, Config{Regex: "^a$"}); err != nil {
-		t.Fatalf("copy/select should allow partial multi-name const selection, got %v", err)
+	// The guard protects the sink's validity, so it applies in copy mode too.
+	_, err := selectDecls(f, Config{Regex: "^a$"})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split multi-name value spec") {
+		t.Fatalf("want multi-name rejection in copy mode, got %v", err)
 	}
 
 	_, f = mustParse(t, `package p
@@ -297,8 +314,8 @@ const x, y = "same", "same"
 const a, b = 1
 const x, y = "same", "same"
 `)
-	_, err := selectDecls(f, Config{Regex: "^a$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially move multi-name value spec") {
+	_, err = selectDecls(f, Config{Regex: "^a$", Move: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split multi-name value spec") {
 		t.Fatalf("want multi-name rejection, got %v", err)
 	}
 }
@@ -312,8 +329,24 @@ const (
 )
 `)
 	_, err := selectDecls(f, Config{Regex: "^(A|C|D)$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially move const block with implicit expressions") {
-		t.Fatalf("got err %v, want implicit const partial move rejection", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
+		t.Fatalf("got err %v, want implicit const partial split rejection", err)
+	}
+}
+
+func TestSelectValueSpecs_RejectsPartialImplicitConstCopy(t *testing.T) {
+	// Copy mode used to bypass the guard and emit `const B` — invalid Go.
+	_, f := mustParse(t, `package p
+
+const (
+	A = "x"
+	B
+	C
+)
+`)
+	_, err := selectDecls(f, Config{Regex: "^B$"})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
+		t.Fatalf("got err %v, want implicit const partial split rejection", err)
 	}
 }
 

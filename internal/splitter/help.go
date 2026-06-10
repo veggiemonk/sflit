@@ -30,12 +30,12 @@ Selection rules:
 
 At least one of -regex or -receiver is required.
 
-Blocked moves:
-  - init functions are rejected because moving them may change package
-    initialization order.
-  - Partial moves from const blocks with iota or implicit expressions are
-    rejected; move the whole block or refactor constants manually first.
-  - Partial moves from multi-name var/const specs are rejected unless each
+Blocked splits (copy and move alike):
+  - init functions are rejected: moving them may change package
+    initialization order, and copying duplicates init so it runs twice.
+  - Partial splits of const blocks with iota or implicit expressions are
+    rejected; select the whole block or refactor constants manually first.
+  - Partial splits of multi-name var/const specs are rejected unless each
     name has a corresponding explicit value.
   - Generated source files are rejected.
   - Files with build constraints can only move into sinks with identical

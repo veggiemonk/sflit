@@ -74,10 +74,8 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 			case cfg.Receiver == "" && re != nil:
 				// regex-only: match funcs AND methods by name.
 				if re.MatchString(x.Name.Name) {
-					if cfg.Move {
-						if err := rejectInitMove(x); err != nil {
-							return nil, err
-						}
+					if err := rejectInitSplit(x); err != nil {
+						return nil, err
 					}
 					kind := KindFunc
 					if isMethod {
@@ -108,10 +106,13 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 	return out, nil
 }
 
-func rejectInitMove(fn *ast.FuncDecl) error {
+// rejectInitSplit applies in both copy and move mode: moving init may change
+// package initialization order, and copying duplicates it — Go allows
+// multiple init funcs, so the package compiles but runs init twice.
+func rejectInitSplit(fn *ast.FuncDecl) error {
 	if fn.Recv == nil && fn.Name != nil && fn.Name.Name == "init" {
 		return errors.New(
-			"cannot move init function: init order may change; refactor init body into a named function and move that instead",
+			"cannot split init function: copying duplicates it and moving may change init order; refactor init body into a named function and split that instead",
 		)
 	}
 	return nil
@@ -131,7 +132,7 @@ func selectGenDecl(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) ([]Match, err
 			// Receiver-only mode never matches vars/consts.
 			return nil, nil
 		}
-		return selectValueSpecs(gd, re, cfg.Move)
+		return selectValueSpecs(gd, re)
 	}
 	return nil, nil
 }
@@ -199,19 +200,20 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 //
 // The source AST is never mutated here; mutation is deferred to
 // Plan.applyMove, after validation, and only on move.
-func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp, move bool) ([]Match, error) {
-	if move {
-		if isIotaConstBlock(gd) {
-			if err := rejectPartialIotaConstMove(gd, re); err != nil {
-				return nil, err
-			}
-		}
-		if err := rejectPartialImplicitConstMove(gd, re); err != nil {
+func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
+	// The guards below apply in both copy and move mode: they protect the
+	// sink's validity (a partially copied implicit spec renders as invalid
+	// Go) and package semantics, not just the source.
+	if isIotaConstBlock(gd) {
+		if err := rejectPartialIotaConstSplit(gd, re); err != nil {
 			return nil, err
 		}
-		if err := rejectUnsafePartialMultiNameValueSpec(gd, re); err != nil {
-			return nil, err
-		}
+	}
+	if err := rejectPartialImplicitConstSplit(gd, re); err != nil {
+		return nil, err
+	}
+	if err := rejectUnsafePartialMultiNameValueSpec(gd, re); err != nil {
+		return nil, err
 	}
 	type specMatch struct {
 		spec    *ast.ValueSpec
@@ -302,7 +304,7 @@ func rejectUnsafePartialMultiNameValueSpec(gd *ast.GenDecl, re *regexp.Regexp) e
 		}
 		if len(vs.Values) != len(vs.Names) {
 			return fmt.Errorf(
-				"cannot partially move multi-name value spec: %d names share %d values; split the declaration manually first",
+				"cannot partially split multi-name value spec: %d names share %d values; split the declaration manually first",
 				len(vs.Names),
 				len(vs.Values),
 			)
@@ -332,8 +334,8 @@ func valueSpecPartiallyMatched(vs *ast.ValueSpec, re *regexp.Regexp) bool {
 
 // isIotaConstBlock reports whether gd is a const block with any value
 // expression containing the predeclared identifier `iota`. Subsequent specs in
-// such a block may implicitly inherit the iota chain, so partial moves are
-// rejected; callers must move the whole block or refactor manually.
+// such a block may implicitly inherit the iota chain, so partial splits are
+// rejected; callers must select the whole block or refactor manually.
 func isIotaConstBlock(gd *ast.GenDecl) bool {
 	if gd.Tok != token.CONST || len(gd.Specs) == 0 {
 		return false
@@ -366,7 +368,7 @@ func exprContainsIota(expr ast.Expr) bool {
 	return contains
 }
 
-func rejectPartialIotaConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
+func rejectPartialIotaConstSplit(gd *ast.GenDecl, re *regexp.Regexp) error {
 	totalNames := 0
 	matchedNames := 0
 	for _, s := range gd.Specs {
@@ -385,13 +387,13 @@ func rejectPartialIotaConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"cannot partially move iota const block: selection matches %d of %d names; move the whole block or refactor it manually",
+		"cannot partially split iota const block: selection matches %d of %d names; select the whole block or refactor it manually",
 		matchedNames,
 		totalNames,
 	)
 }
 
-func rejectPartialImplicitConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
+func rejectPartialImplicitConstSplit(gd *ast.GenDecl, re *regexp.Regexp) error {
 	if gd.Tok != token.CONST || len(gd.Specs) == 0 {
 		return nil
 	}
@@ -421,6 +423,6 @@ func rejectPartialImplicitConstMove(gd *ast.GenDecl, re *regexp.Regexp) error {
 		return nil
 	}
 	return errors.New(
-		"cannot partially move const block with implicit expressions: move the whole block or make each const expression explicit",
+		"cannot partially split const block with implicit expressions: select the whole block or make each const expression explicit",
 	)
 }
