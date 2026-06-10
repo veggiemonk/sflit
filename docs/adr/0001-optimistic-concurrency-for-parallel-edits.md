@@ -182,6 +182,11 @@ Harder / costs:
 - Retry re-runs the full pipeline (parse, select, render). At sflit file sizes
   this is milliseconds and irrelevant; it would only matter for pathological
   contention (hundreds of writers on one file).
+- Sidecar lockfiles (`.<name>.sflit.lock`) are left behind: unlinking a
+  locked file lets a third process lock a fresh inode while a waiter holds
+  the dead one — two winners. The litter is inert but shows up in `git
+  status`; safe cleanup (unlink-under-lock with inode recheck) is deferred
+  (TODO.md).
 - `flock` is advisory: a writer that ignores both the lock and plain rename
   semantics can still race within the microsecond commit window. Accepted —
   every editor and tool in practice writes via rename or direct write, and the

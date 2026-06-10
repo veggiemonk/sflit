@@ -56,6 +56,7 @@ Flags:
   -regex     string  Regex matched against declaration names
   -receiver  string  Receiver type name
   -move              Delete matched decls from source after writing (default: copy)
+  -retries   int     Max re-runs after a concurrent-write conflict (default: 5)
   -json              Print structured JSON result to stdout
   -debug             Print debug logs to stderr
 
@@ -85,6 +86,14 @@ Blocked splits (copy and move alike):
     rejected: the source keeps the declarations, so the package would gain
     duplicates and stop compiling. Use -move, or copy into a different
     directory.
+
+Concurrency:
+  Safe to fan out N concurrent invocations on the same files with no
+  external coordination. Each run hashes source and sink at parse and
+  verifies them under a short per-file lock at commit; if another writer
+  (sflit or not) changed a file in between, the run re-runs against the
+  fresh content, up to -retries times. Sidecar lock files
+  (.<name>.sflit.lock) are left behind by design and are safe to ignore.
 
 Comments:
   Comments associated with moved declarations travel with them, including
@@ -117,7 +126,7 @@ Exit codes:
   0  Success
   1  Operation error (collision, package mismatch, same-directory copy,
      build-constraint mismatch, generated/cgo/dot-import source, parse error,
-     no matches, write error)
+     no matches, write error, conflict retries exhausted)
   2  Flag/usage error (invalid flags or missing required arguments)
 ```
 
@@ -140,6 +149,7 @@ schema source.
 - On collision (a selected Go package-namespace name already exists in the sink), `sflit` bails before writing.
 - On package mismatch (sink's package differs from source's), `sflit` bails before writing.
 - On copy, only the sink is written; on move, source and sink are written via temp-file + rename.
+- Concurrent invocations on the same files are safe without external coordination — fan out N agents freely. Each run hashes source and sink at parse and verifies both under a short per-file lock at commit; a conflicting write (by sflit or any other tool) triggers a re-run against the fresh content, up to `-retries` times (default 5). See [ADR-0001](docs/adr/0001-optimistic-concurrency-for-parallel-edits.md). Sidecar lock files (`.<name>.sflit.lock`) are left behind by design and are safe to ignore or gitignore.
 - Copying (the default, without `-move`) into the source's own directory is rejected before writing: the source keeps every selected declaration, so the package would gain duplicate names and stop compiling. Use `-move` for same-directory splits; copy targets a sink in a different directory.
 - `sflit` rejects splits (copy and move alike) that are likely to change semantics silently or produce invalid Go: `init` functions, partial `iota`/implicit const blocks, and unsafe partial multi-name value specs.
 - `sflit` rejects generated files, cgo files, dot-import files, and build-constraint mismatches rather than guessing at file-sensitive semantics.

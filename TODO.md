@@ -21,6 +21,13 @@ Entry format:
 - **Why deferred:** complementary to, not a substitute for, the optimistic-concurrency design — it doesn't cover independently fanned-out agents, which is the actual contention scenario. Builds on ADR-0001's commit atom (lock → verify hashes → rename, generalized from 2 files to N+1), so it must land after it. Needs its own plan-format design.
 - **Acceptance:** a plan file format is specified, `sflit -plan` applies N splits atomically with disjointness validation, testscript coverage exists, and `--tool-schema` documents it.
 
+## Safe cleanup of sidecar lock files
+
+- **Kind:** deferred improvement.
+- **Context:** ADR-0001's commit-window lock leaves inert `.<name>.sflit.lock` files next to every file sflit has written (`internal/splitter/lock.go`). They show up in `git status` of user repos.
+- **Why deferred:** naive unlink is unsound — removing a locked file lets a third process lock a fresh inode while a waiter holds the dead one, yielding two lock holders. The sound protocol (unlink while holding the lock + acquirers re-stat and retry on inode mismatch) is straightforward on unix but awkward on windows, where deleting an open file needs POSIX delete semantics. gofrs/flock punts on this too.
+- **Acceptance:** either lock files are removed safely on release on all three platforms (with a regression test for the two-winners race), or a documented decision to keep the litter (plus `.gitignore` guidance) replaces this entry.
+
 ## CHANGELOG.md tied to releases
 
 - **Context:** no user-facing log of behavior changes. `experiment.md` tracks dev-only notes. The `-regex` semantics shift (commit `cf6841e`) was a breaking behavioral change with no changelog entry.
