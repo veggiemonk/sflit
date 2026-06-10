@@ -7,8 +7,10 @@ cmp big.go expected_big.go
 cmp filter.go expected_filter.go
 cmp render.go expected_render.go
 
-# The commit-window lock leaves inert sidecar files behind by design.
-exists .big.go.sflit.lock
+# Sidecar lock files are removed on release; on windows (best-effort
+# platform) they are left behind.
+[!GOOS:windows] ! exists .big.go.sflit.lock
+[GOOS:windows] exists .big.go.sflit.lock
 
 -- big.go --
 package mypkg

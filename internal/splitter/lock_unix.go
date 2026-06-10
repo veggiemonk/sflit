@@ -32,3 +32,10 @@ func funlock(f *os.File) error {
 		}
 	}
 }
+
+// removeLockFile unlinks the sidecar; the caller must still hold the lock
+// (only the holder may unlink — acquirers detect the swap via os.SameFile).
+// Failure is ignored: the sidecar then merely remains, which is inert.
+func removeLockFile(path string) {
+	_ = os.Remove(path)
+}

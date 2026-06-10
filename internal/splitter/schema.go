@@ -109,7 +109,7 @@ func toolSchemaJSON() []byte {
 				},
 			},
 		},
-		"concurrency": "Safe to fan out N concurrent invocations on the same files with no external coordination. Each run hashes source and sink at parse and verifies them under a short per-file lock at commit; a conflicting write (sflit or any other tool) triggers a re-run against the fresh content, up to -retries times. Sidecar lock files (.<name>.sflit.lock) are left behind by design and are safe to ignore.",
+		"concurrency": "Safe to fan out N concurrent invocations on the same files with no external coordination. Each run hashes source and sink at parse and verifies them under a short per-file lock at commit; a conflicting write (sflit or any other tool) triggers a re-run against the fresh content, up to -retries times. Sidecar lock files (.<name>.sflit.lock) are removed on release; on windows they are left behind (best-effort platform) and are safe to ignore.",
 		"exit_codes": map[string]string{
 			"0": "Success",
 			"1": "Operation error (collision, package mismatch, same-directory copy, build-constraint mismatch, generated/cgo/dot-import source, parse error, no matches, write error, conflict retries exhausted)",

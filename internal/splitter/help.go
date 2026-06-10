@@ -53,7 +53,8 @@ Concurrency:
   verifies them under a short per-file lock at commit; if another writer
   (sflit or not) changed a file in between, the run re-runs against the
   fresh content, up to -retries times. Sidecar lock files
-  (.<name>.sflit.lock) are left behind by design and are safe to ignore.
+  (.<name>.sflit.lock) are removed on release; on windows they are left
+  behind (best-effort platform) and are safe to ignore.
 
 Comments:
   Comments associated with moved declarations travel with them, including

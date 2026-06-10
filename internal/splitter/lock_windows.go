@@ -23,3 +23,10 @@ func flockExclusive(f *os.File) error {
 func funlock(f *os.File) error {
 	return windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, new(windows.Overlapped))
 }
+
+// removeLockFile is a no-op on windows: deleting an open file needs POSIX
+// delete semantics (FILE_DISPOSITION_POSIX_SEMANTICS, Win10+/NTFS), more
+// plumbing than best-effort windows support warrants (ADR-0001 Amendment 1).
+// The sidecar remains; since nothing unlinks it, the acquire-side identity
+// recheck passes trivially.
+func removeLockFile(string) {}

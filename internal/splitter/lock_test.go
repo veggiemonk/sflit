@@ -1,6 +1,8 @@
 package splitter
 
 import (
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -33,12 +35,50 @@ func TestLockAcquireReleaseReacquire(t *testing.T) {
 	if err := release(); err != nil {
 		t.Fatalf("release 2: %v", err)
 	}
-	// The sidecar lockfile is deliberately left behind: unlinking a locked
-	// file lets a third process lock a fresh inode while a waiter holds the
-	// dead one — two winners.
-	if _, err := os.Stat(lockPath(target)); err != nil {
-		t.Fatalf("lockfile must remain: %v", err)
+	// Release unlinks the sidecar on unix. On windows it is left behind:
+	// deleting an open file needs POSIX delete semantics (best-effort
+	// platform, ADR-0001 Amendment 1).
+	_, err = os.Stat(lockPath(target))
+	if runtime.GOOS == "windows" {
+		if err != nil {
+			t.Fatalf("lockfile must remain on windows: %v", err)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("lockfile must be removed on release: stat err = %v", err)
 	}
+}
+
+// TestLockUnlinkNoTwoWinners regresses the two-winners race: release
+// unlinks the sidecar, so a waiter granted the lock on the now-dead inode
+// must detect it and retry instead of proceeding while a third acquirer
+// holds a lock on the freshly created sidecar. Goroutines loop
+// acquire/release so unlinks constantly interleave with blocked waiters;
+// the atomic occupancy counter detects any overlap (atomics because the
+// race detector cannot see the happens-before edge a kernel lock provides).
+func TestLockUnlinkNoTwoWinners(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "a.go")
+	var inCritical atomic.Int32
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Go(func() {
+			for range 50 {
+				release, err := acquireFileLock(target)
+				if err != nil {
+					t.Error(err)
+					return
+				}
+				if n := inCritical.Add(1); n != 1 {
+					t.Errorf("%d goroutines in critical section", n)
+				}
+				runtime.Gosched()
+				inCritical.Add(-1)
+				if err := release(); err != nil {
+					t.Error(err)
+				}
+			}
+		})
+	}
+	wg.Wait()
 }
 
 // TestLockMutualExclusion drives the lock from concurrent goroutines, each
