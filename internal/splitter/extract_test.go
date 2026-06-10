@@ -98,6 +98,113 @@ func Keep() {}
 	}
 }
 
+func TestExtract_PrevDeclTrailingCommentStays(t *testing.T) {
+	fset, f := mustParse(t, `package p
+
+var x = 1 // important note about x
+
+func Matched() {}
+`)
+	ms, _ := selectDecls(f, Config{Regex: "^Matched$"})
+	ex := extractMatches(fset, f, ms)
+	for _, e := range ex {
+		for _, cg := range e.LeadComms {
+			if strings.Contains(cg.Text(), "important note") {
+				t.Fatalf("trailing comment of unmoved var x was stolen")
+			}
+		}
+	}
+	found := false
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "important note") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("trailing comment of var x removed from source file.Comments")
+	}
+}
+
+func TestExtract_PrevFuncTrailingCommentStays(t *testing.T) {
+	fset, f := mustParse(t, `package p
+
+func Prev() {} // note on Prev
+
+func Matched() {}
+`)
+	ms, _ := selectDecls(f, Config{Regex: "^Matched$"})
+	ex := extractMatches(fset, f, ms)
+	for _, e := range ex {
+		for _, cg := range e.LeadComms {
+			if strings.Contains(cg.Text(), "note on Prev") {
+				t.Fatalf("trailing comment of unmoved Prev was stolen")
+			}
+		}
+	}
+	found := false
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "note on Prev") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("trailing comment of Prev removed from source file.Comments")
+	}
+}
+
+func TestExtract_PackageClauseTrailingCommentStays(t *testing.T) {
+	fset, f := mustParse(t, `package p // clause note
+
+func Matched() {}
+`)
+	ms, _ := selectDecls(f, Config{Regex: "^Matched$"})
+	ex := extractMatches(fset, f, ms)
+	for _, e := range ex {
+		for _, cg := range e.LeadComms {
+			if strings.Contains(cg.Text(), "clause note") {
+				t.Fatalf("package clause trailing comment was stolen")
+			}
+		}
+	}
+	found := false
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "clause note") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("package clause trailing comment removed from source file.Comments")
+	}
+}
+
+func TestExtract_MatchedDeclOwnTrailingCommentTravels(t *testing.T) {
+	fset, f := mustParse(t, `package p
+
+func Matched() {} // travels with Matched
+
+func Keep() {}
+`)
+	ms, _ := selectDecls(f, Config{Regex: "^Matched$"})
+	ex := extractMatches(fset, f, ms)
+	if len(ex) != 1 {
+		t.Fatalf("want 1 extracted, got %d", len(ex))
+	}
+	found := false
+	for _, cg := range ex[0].LeadComms {
+		if strings.Contains(cg.Text(), "travels with Matched") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("matched decl's own trailing comment did not travel")
+	}
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "travels with Matched") {
+			t.Fatalf("travelled comment still present in source file.Comments")
+		}
+	}
+}
+
 func TestExtract_FreeFloatingAbove(t *testing.T) {
 	fset, f := mustParse(t, `package p
 

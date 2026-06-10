@@ -18,13 +18,17 @@ type Extracted struct {
 // comment group that travels with them. For each non-synthetic match, the
 // span (prevDeclEnd, decl.End()] is swept so leading free-floating
 // comments, attached doc comments, in-body comments, and trailing inline
-// comments all come along. When the last decl(s) in the file are all
-// matched, comments after the final unmoved decl (or package clause)
-// travel with the last matched decl. For synthetic matches (specs spliced
-// out of a partial GenDecl), spec-level Doc/Comment groups are captured
-// directly from the spec nodes. Captured comments are removed from
-// file.Comments so they never print twice from the source.
-func extractMatches(_ *token.FileSet, file *ast.File, matches []Match) []Extracted {
+// comments all come along. A comment group starting on the same line as a
+// decl's End() belongs to that decl: the sweep skips groups on the
+// previous boundary's last line (they stay with the unmoved decl or
+// package clause) and extends to groups on the matched decl's own last
+// line. When the last decl(s) in the file are all matched, comments after
+// the final unmoved decl (or package clause) travel with the last matched
+// decl. For synthetic matches (specs spliced out of a partial GenDecl),
+// spec-level Doc/Comment groups are captured directly from the spec
+// nodes. Captured comments are removed from file.Comments so they never
+// print twice from the source.
+func extractMatches(fset *token.FileSet, file *ast.File, matches []Match) []Extracted {
 	if len(matches) == 0 {
 		return nil
 	}
@@ -58,12 +62,23 @@ func extractMatches(_ *token.FileSet, file *ast.File, matches []Match) []Extract
 		}
 		lower := prevEnd[d]
 		upper := d.End()
+		lowerLine := fset.Position(lower).Line
+		upperLine := fset.Position(upper).Line
 		var owned []*ast.CommentGroup
 		for _, cg := range file.Comments {
 			if consumed[cg] {
 				continue
 			}
-			if cg.End() > lower && cg.End() <= upper {
+			if cg.End() <= lower {
+				continue
+			}
+			cgLine := fset.Position(cg.Pos()).Line
+			if cgLine == lowerLine {
+				// Same-line trailing comment of the previous boundary
+				// (unmoved decl or package clause): it stays behind.
+				continue
+			}
+			if cg.End() <= upper || cgLine == upperLine {
 				owned = append(owned, cg)
 				consumed[cg] = true
 			}
