@@ -27,6 +27,12 @@
 // rejected: init functions, partial iota const blocks, partial const blocks with
 // implicit expressions, and unsafe partial multi-name value specs must be moved
 // as a whole or refactored manually before splitting.
+//
+// Copy mode (Move false, the default) only writes the sink, so it is valid
+// only when the sink lives in a different directory than the source (same
+// package name, different package). Copying into the source's own directory
+// is rejected before writing: the source keeps every selected declaration,
+// and the package would gain duplicate top-level names and stop compiling.
 package splitter
 
 import (
@@ -78,6 +84,11 @@ func Run(cfg Config) (Result, error) {
 		return Result{}, err
 	}
 	log.Info("validation passed")
+
+	// Only now — after validation, and only on move — is the source AST
+	// mutated. Selection, extraction, and plan building are read-only on
+	// the source, so a copy or a failed validation never alters it.
+	plan.applyMove()
 
 	srcBytes, sinkBytes, err := renderFiles(plan)
 	if err != nil {

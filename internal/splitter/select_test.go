@@ -94,22 +94,21 @@ func TestSelectRegexOnly_NoMatch(t *testing.T) {
 	}
 }
 
-func TestSelectRegexOnly_InitCopyAllowed(t *testing.T) {
+func TestSelectRegexOnly_InitCopyRejected(t *testing.T) {
+	// Copying init into a same-package sink duplicates it: Go allows
+	// multiple init funcs, so it compiles but runs init twice.
 	_, f := mustParse(t, "package p\nfunc init(){}\n")
-	ms, err := selectDecls(f, Config{Regex: "^init$"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got := matchNames(ms); len(got) != 1 || got[0] != "init" {
-		t.Fatalf("got %v, want [init]", got)
+	_, err := selectDecls(f, Config{Regex: "^init$"})
+	if err == nil || !strings.Contains(err.Error(), "cannot split init function") {
+		t.Fatalf("got err %v, want cannot split init function", err)
 	}
 }
 
 func TestSelectRegexOnly_InitMoveRejected(t *testing.T) {
 	_, f := mustParse(t, "package p\nfunc init(){}\n")
 	_, err := selectDecls(f, Config{Regex: "^init$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot move init function") {
-		t.Fatalf("got err %v, want cannot move init function", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot split init function") {
+		t.Fatalf("got err %v, want cannot split init function", err)
 	}
 }
 
@@ -164,7 +163,8 @@ func (m MyStruct) Foo() {}
 			t.Fatalf("unexpected %q in %v", g, got)
 		}
 	}
-	// Also verify Helper still exists in the original file.Decls after mutation.
+	// Also verify Helper still exists in the original file.Decls; selection
+	// is read-only on the source.
 	var helperFound bool
 	for _, d := range f.Decls {
 		if gd, ok := d.(*ast.GenDecl); ok {
@@ -253,8 +253,24 @@ const (
 )
 `)
 	_, err := selectDecls(f, Config{Regex: "^A$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially move iota const block") {
-		t.Fatalf("got err %v, want iota const partial move rejection", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split iota const block") {
+		t.Fatalf("got err %v, want iota const partial split rejection", err)
+	}
+}
+
+func TestSelectValueSpecs_RejectsPartialIotaConstCopy(t *testing.T) {
+	// Copy mode used to bypass the guard and emit `const B` — invalid Go.
+	_, f := mustParse(t, `package p
+
+const (
+	A = iota
+	B
+	C
+)
+`)
+	_, err := selectDecls(f, Config{Regex: "^B$"})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split iota const block") {
+		t.Fatalf("got err %v, want iota const partial split rejection", err)
 	}
 }
 
@@ -287,8 +303,10 @@ func TestSelectValueSpecs_RejectsPartialMultiNameConstWithoutOneToOneValues(t *t
 const a, b = 1
 const x, y = "same", "same"
 `)
-	if _, err := selectDecls(f, Config{Regex: "^a$"}); err != nil {
-		t.Fatalf("copy/select should allow partial multi-name const selection, got %v", err)
+	// The guard protects the sink's validity, so it applies in copy mode too.
+	_, err := selectDecls(f, Config{Regex: "^a$"})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split multi-name value spec") {
+		t.Fatalf("want multi-name rejection in copy mode, got %v", err)
 	}
 
 	_, f = mustParse(t, `package p
@@ -296,8 +314,8 @@ const x, y = "same", "same"
 const a, b = 1
 const x, y = "same", "same"
 `)
-	_, err := selectDecls(f, Config{Regex: "^a$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially move multi-name value spec") {
+	_, err = selectDecls(f, Config{Regex: "^a$", Move: true})
+	if err == nil || !strings.Contains(err.Error(), "cannot partially split multi-name value spec") {
 		t.Fatalf("want multi-name rejection, got %v", err)
 	}
 }
@@ -311,7 +329,71 @@ const (
 )
 `)
 	_, err := selectDecls(f, Config{Regex: "^(A|C|D)$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially move const block with implicit expressions") {
-		t.Fatalf("got err %v, want implicit const partial move rejection", err)
+	if err == nil ||
+		!strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
+		t.Fatalf("got err %v, want implicit const partial split rejection", err)
+	}
+}
+
+func TestSelectValueSpecs_RejectsPartialImplicitConstCopy(t *testing.T) {
+	// Copy mode used to bypass the guard and emit `const B` — invalid Go.
+	_, f := mustParse(t, `package p
+
+const (
+	A = "x"
+	B
+	C
+)
+`)
+	_, err := selectDecls(f, Config{Regex: "^B$"})
+	if err == nil ||
+		!strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
+		t.Fatalf("got err %v, want implicit const partial split rejection", err)
+	}
+}
+
+// Selection must be pure: it describes what to take without touching the
+// source AST, in both copy and move mode. The move-time splice happens in
+// Plan.applyMove, after validation.
+func TestSelectDecls_PureOnPartialTypeGroup(t *testing.T) {
+	for _, move := range []bool{false, true} {
+		_, f := mustParse(t, `package p
+
+type (
+	Helper struct{}
+	Target struct{}
+)
+`)
+		ms, err := selectDecls(f, Config{Regex: "^Target$", Move: move})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ms) != 1 || !ms[0].Synthetic || ms[0].Origin == nil {
+			t.Fatalf("move=%v: want one synthetic match with origin, got %+v", move, ms)
+		}
+		gd := f.Decls[0].(*ast.GenDecl)
+		if len(gd.Specs) != 2 {
+			t.Fatalf("move=%v: selectDecls mutated source group: %d specs remain, want 2",
+				move, len(gd.Specs))
+		}
+	}
+}
+
+func TestSelectDecls_PureOnPartialMultiNameValueSpec(t *testing.T) {
+	_, f := mustParse(t, `package p
+
+var a, b = 1, 2
+`)
+	ms, err := selectDecls(f, Config{Regex: "^a$", Move: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ms) != 1 || !ms[0].Synthetic || ms[0].Origin == nil {
+		t.Fatalf("want one synthetic match with origin, got %+v", ms)
+	}
+	vs := f.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+	if len(vs.Names) != 2 || len(vs.Values) != 2 {
+		t.Fatalf("selectDecls mutated source value spec: names=%d values=%d, want 2/2",
+			len(vs.Names), len(vs.Values))
 	}
 }

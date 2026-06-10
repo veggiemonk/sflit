@@ -105,13 +105,34 @@ func TestRunCLI_CollisionIncludesSinkAndName(t *testing.T) {
 	writeFileForCLITest(t, sink, "package p\nfunc Foo(){}\n")
 
 	var stdout, stderr bytes.Buffer
-	got := RunCLI([]string{"-source", source, "-sink", sink, "-regex", "Foo"}, nil, &stdout, &stderr)
+	got := RunCLI([]string{"-source", source, "-sink", sink, "-regex", "Foo", "-move"}, nil, &stdout, &stderr)
 	if got != 1 {
 		t.Fatalf("exit code = %d, want 1; stderr:\n%s", got, stderr.String())
 	}
 	want := `sflit: cannot write to ` + sink + `: declaration Foo already exists in sink`
 	if strings.TrimSpace(stderr.String()) != want {
 		t.Fatalf("stderr = %q, want %q", strings.TrimSpace(stderr.String()), want)
+	}
+}
+
+func TestRunCLI_SameDirCopyRejectedExit1(t *testing.T) {
+	dir := t.TempDir()
+	source := dir + "/a.go"
+	sink := dir + "/b.go"
+	writeFileForCLITest(t, source, "package p\nfunc Foo(){}\n")
+
+	var stdout, stderr bytes.Buffer
+	got := RunCLI([]string{"-source", source, "-sink", sink, "-regex", "Foo"}, nil, &stdout, &stderr)
+	if got != 1 {
+		t.Fatalf("exit code = %d, want 1; stderr:\n%s", got, stderr.String())
+	}
+	for _, want := range []string{"cannot copy within the same directory", source, sink, "-move"} {
+		if !strings.Contains(stderr.String(), want) {
+			t.Fatalf("stderr = %q, want substring %q", stderr.String(), want)
+		}
+	}
+	if _, err := os.Stat(sink); !os.IsNotExist(err) {
+		t.Fatalf("sink %s should not have been created (stat err = %v)", sink, err)
 	}
 }
 

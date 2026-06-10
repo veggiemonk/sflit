@@ -8,7 +8,10 @@
 // end of the file. Moves that can silently change semantics, such as init
 // functions and partial implicit const blocks, are rejected. File-sensitive
 // cases such as generated files, build constraints, cgo, and dot imports are
-// rejected rather than rewritten heuristically.
+// rejected rather than rewritten heuristically. Copying (the default, without
+// -move) into the source's own directory is rejected: the source keeps the
+// declarations, so the package would gain duplicates; use -move for
+// same-directory splits, or copy into a different directory.
 //
 // Usage:
 //
@@ -18,8 +21,11 @@
 //
 // Examples:
 //
-//	# Copy declarations matching a regex
-//	sflit -source big.go -regex '^Filter' -sink filter.go
+//	# Split a file: move declarations matching a regex into a new file
+//	sflit -source big.go -regex '^Filter' -sink filter.go -move
+//
+//	# Copy declarations into another directory
+//	sflit -source big.go -regex '^Filter' -sink otherpkg/filter.go
 //
 //	# Move a type and all its methods
 //	sflit -source big.go -receiver MyStruct -sink my_struct.go -move
@@ -28,8 +34,8 @@
 //	sflit -source big.go -receiver MyStruct -regex '^Filter' -sink my_struct_filter.go -move
 //
 // Exit codes: 0 success, 1 operation error (collision, package mismatch,
-// build-constraint mismatch, generated/cgo/dot-import source, parse error, no
-// matches, write error), 2 flag/usage error.
+// same-directory copy, build-constraint mismatch, generated/cgo/dot-import
+// source, parse error, no matches, write error), 2 flag/usage error.
 //
 // See [github.com/veggiemonk/sflit/internal/splitter] for the internal API.
 package main

@@ -1,6 +1,8 @@
-# Copy functions matching regex into a new sink file.
-exec sflit -source big.go -sink small.go -regex '^Filter'
-cmp small.go expected_small.go
+# Copy functions matching regex into a new sink file in another directory.
+# (Copying within the source's own directory is rejected — see
+# copy_samedir_bail.txt — because the package would gain duplicates.)
+exec sflit -source big.go -sink sub/small.go -regex '^Filter'
+cmp sub/small.go expected_small.go
 cmp big.go expected_big.go
 
 -- big.go --

@@ -42,6 +42,7 @@ func Bar() {}
 	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
 	ex := extractMatches(fset, src, ms)
 	plan := buildPlan(fset, nil, "src.go", "sink.go", src, nil, ex, true /*move*/)
+	plan.applyMove()
 	srcBytes, _, err := renderFiles(plan)
 	if err != nil {
 		t.Fatalf("render: %v", err)

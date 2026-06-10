@@ -67,9 +67,24 @@ func (a App) M() {}
 	if !found {
 		t.Fatalf("trailing orphan comment not attached to last matched decl")
 	}
+	// Extraction is read-only on the source: the orphan must still be in
+	// f.Comments until the move is applied post-validation.
+	found = false
 	for _, cg := range f.Comments {
 		if strings.Contains(cg.Text(), "trailing orphan") {
-			t.Fatalf("trailing orphan still present in source file.Comments")
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("extractMatches mutated source file.Comments before applyMove")
+	}
+	// After the move is committed, the orphan must leave the source so it
+	// never prints twice.
+	plan := buildPlan(fset, nil, "src.go", "sink.go", f, nil, ex, true)
+	plan.applyMove()
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "trailing orphan") {
+			t.Fatalf("trailing orphan still present in source file.Comments after applyMove")
 		}
 	}
 }
@@ -94,6 +109,116 @@ func Keep() {}
 			if strings.Contains(cg.Text(), "trailing Keep") {
 				t.Fatalf("trailing comment after unmoved Keep was yanked")
 			}
+		}
+	}
+}
+
+func TestExtract_PrevDeclTrailingCommentStays(t *testing.T) {
+	fset, f := mustParse(t, `package p
+
+var x = 1 // important note about x
+
+func Matched() {}
+`)
+	ms, _ := selectDecls(f, Config{Regex: "^Matched$"})
+	ex := extractMatches(fset, f, ms)
+	for _, e := range ex {
+		for _, cg := range e.LeadComms {
+			if strings.Contains(cg.Text(), "important note") {
+				t.Fatalf("trailing comment of unmoved var x was stolen")
+			}
+		}
+	}
+	found := false
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "important note") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("trailing comment of var x removed from source file.Comments")
+	}
+}
+
+func TestExtract_PrevFuncTrailingCommentStays(t *testing.T) {
+	fset, f := mustParse(t, `package p
+
+func Prev() {} // note on Prev
+
+func Matched() {}
+`)
+	ms, _ := selectDecls(f, Config{Regex: "^Matched$"})
+	ex := extractMatches(fset, f, ms)
+	for _, e := range ex {
+		for _, cg := range e.LeadComms {
+			if strings.Contains(cg.Text(), "note on Prev") {
+				t.Fatalf("trailing comment of unmoved Prev was stolen")
+			}
+		}
+	}
+	found := false
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "note on Prev") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("trailing comment of Prev removed from source file.Comments")
+	}
+}
+
+func TestExtract_PackageClauseTrailingCommentStays(t *testing.T) {
+	fset, f := mustParse(t, `package p // clause note
+
+func Matched() {}
+`)
+	ms, _ := selectDecls(f, Config{Regex: "^Matched$"})
+	ex := extractMatches(fset, f, ms)
+	for _, e := range ex {
+		for _, cg := range e.LeadComms {
+			if strings.Contains(cg.Text(), "clause note") {
+				t.Fatalf("package clause trailing comment was stolen")
+			}
+		}
+	}
+	found := false
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "clause note") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("package clause trailing comment removed from source file.Comments")
+	}
+}
+
+func TestExtract_MatchedDeclOwnTrailingCommentTravels(t *testing.T) {
+	fset, f := mustParse(t, `package p
+
+func Matched() {} // travels with Matched
+
+func Keep() {}
+`)
+	ms, _ := selectDecls(f, Config{Regex: "^Matched$"})
+	ex := extractMatches(fset, f, ms)
+	if len(ex) != 1 {
+		t.Fatalf("want 1 extracted, got %d", len(ex))
+	}
+	found := false
+	for _, cg := range ex[0].LeadComms {
+		if strings.Contains(cg.Text(), "travels with Matched") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("matched decl's own trailing comment did not travel")
+	}
+	// Extraction is read-only; the comment leaves the source via applyMove.
+	plan := buildPlan(fset, nil, "src.go", "sink.go", f, nil, ex, true)
+	plan.applyMove()
+	for _, cg := range f.Comments {
+		if strings.Contains(cg.Text(), "travels with Matched") {
+			t.Fatalf("travelled comment still present in source file.Comments after applyMove")
 		}
 	}
 }

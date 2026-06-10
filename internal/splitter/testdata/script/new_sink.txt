@@ -1,7 +1,9 @@
-# Sink file does not exist beforehand; tool creates it with matching package.
-exec sflit -source a.go -sink b.go -regex '^Foo'
-exists b.go
-cmp b.go expected_b.go
+# Sink file does not exist beforehand; tool creates it (and its directory)
+# with matching package. Copy targets another directory; same-directory
+# splits use -move.
+exec sflit -source a.go -sink sub/b.go -regex '^Foo'
+exists sub/b.go
+cmp sub/b.go expected_b.go
 
 -- a.go --
 package mypkg

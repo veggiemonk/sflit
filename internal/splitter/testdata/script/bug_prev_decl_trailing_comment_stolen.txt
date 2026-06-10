@@ -1,0 +1,86 @@
+# BUG: a same-line trailing comment on the declaration PRECEDING a match
+# was stolen by the sweep: the interval (prevDeclEnd, decl.End()] starts
+# right after the previous decl's End(), and a trailing `// note` on that
+# decl's last line ends inside it. The comment belongs to the unmoved
+# decl and must stay in the source — and never appear in the sink.
+
+# move: trailing comment stays attached to var x in the source.
+exec sflit -source a.go -sink b.go -regex '^Matched$' -move
+cmp a.go expected_a.go
+cmp b.go expected_b.go
+
+# copy: source untouched on disk, sink free of the stolen comment.
+# Sink goes to another directory: same-dir copies are rejected.
+mkdir other
+exec sflit -source c.go -sink other/d.go -regex '^Copied$'
+cmp c.go c_orig.go
+cmp other/d.go expected_d.go
+
+# move: previous decl is a FuncDecl with a trailing `} // note` comment.
+exec sflit -source e.go -sink f.go -regex '^Moved$' -move
+cmp e.go expected_e.go
+cmp f.go expected_f.go
+
+# move: first decl matched — package clause trailing comment stays.
+exec sflit -source g.go -sink h.go -regex '^First$' -move
+cmp g.go expected_g.go
+cmp h.go expected_h.go
+
+-- a.go --
+package p
+
+var x = 1 // important note about x
+
+func Matched() {}
+-- expected_a.go --
+package p
+
+var x = 1 // important note about x
+-- expected_b.go --
+package p
+
+func Matched() {}
+-- c.go --
+package p
+
+var y = 2 // note about y
+
+func Copied() {}
+-- c_orig.go --
+package p
+
+var y = 2 // note about y
+
+func Copied() {}
+-- expected_d.go --
+package p
+
+func Copied() {}
+-- e.go --
+package p
+
+func Prev() {} // note on Prev
+
+func Moved() {}
+-- expected_e.go --
+package p
+
+func Prev() {} // note on Prev
+-- expected_f.go --
+package p
+
+func Moved() {}
+-- g.go --
+package p // clause note
+
+func First() {}
+
+func Keep() {}
+-- expected_g.go --
+package p // clause note
+
+func Keep() {}
+-- expected_h.go --
+package p
+
+func First() {}
