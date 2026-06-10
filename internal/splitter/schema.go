@@ -43,7 +43,7 @@ func toolSchemaJSON() []byte {
 				{"required": []string{"receiver"}},
 			},
 		},
-		"blocked_moves": []string{
+		"blocked_splits": []string{
 			"init functions (copy and move alike): moving may change package initialization order, copying duplicates init so it runs twice",
 			"partial splits of iota const blocks (copy and move alike)",
 			"partial splits of const blocks with implicit expressions (copy and move alike)",
