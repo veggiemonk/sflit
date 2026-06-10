@@ -55,13 +55,13 @@ func Run(cfg Config) (Result, error) {
 	if err := cfg.Validate(); err != nil {
 		return Result{}, err
 	}
-	fset, src, _, err := parseGoFile(cfg.Source)
+	fset, src, srcSnap, err := parseGoFile(cfg.Source)
 	if err != nil {
 		return Result{}, err
 	}
 	log.Info("parsed source", "path", cfg.Source, "decls", len(src.Decls))
 
-	sinkFset, origSink, _, err := parseGoFileIfExists(cfg.Sink)
+	sinkFset, origSink, sinkSnap, err := parseGoFileIfExists(cfg.Sink)
 	if err != nil {
 		return Result{}, err
 	}
@@ -94,14 +94,18 @@ func Run(cfg Config) (Result, error) {
 	if err != nil {
 		return Result{}, err
 	}
+	// The commit verifies both pre-images under lock: even a copy, which
+	// only writes the sink, conflicts if the source it was rendered from
+	// has changed.
+	com := commit{snaps: []fileSnapshot{srcSnap, sinkSnap}}
 	// On copy, only write the sink.
 	if !cfg.Move {
-		if err := writeSingle(cfg.Sink, sinkBytes); err != nil {
+		if err := com.writeSingle(cfg.Sink, sinkBytes); err != nil {
 			return Result{}, fmt.Errorf("write sink %s: %w", cfg.Sink, err)
 		}
 		log.Info("wrote file", "path", cfg.Sink, "bytes", len(sinkBytes))
 	} else {
-		if err := writePair(cfg.Source, srcBytes, cfg.Sink, sinkBytes); err != nil {
+		if err := com.writePair(cfg.Source, srcBytes, cfg.Sink, sinkBytes); err != nil {
 			return Result{}, err
 		}
 		log.Info("wrote file", "path", cfg.Source, "bytes", len(srcBytes))
