@@ -55,13 +55,13 @@ func Run(cfg Config) (Result, error) {
 	if err := cfg.Validate(); err != nil {
 		return Result{}, err
 	}
-	fset, src, err := parseGoFile(cfg.Source)
+	fset, src, _, err := parseGoFile(cfg.Source)
 	if err != nil {
 		return Result{}, err
 	}
 	log.Info("parsed source", "path", cfg.Source, "decls", len(src.Decls))
 
-	sinkFset, origSink, err := parseGoFileIfExists(cfg.Sink)
+	sinkFset, origSink, _, err := parseGoFileIfExists(cfg.Sink)
 	if err != nil {
 		return Result{}, err
 	}
