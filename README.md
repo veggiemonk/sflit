@@ -41,6 +41,10 @@ Here is what moving declarations buys you:
    lines must be split, sflit is the remediation: the linter flags, sflit
    moves, nothing changes meaning.
 
+For a worked example — a 1208-line file moved into 11 files, tests
+mirrored to match — see
+[docs/splitting-a-real-file.md](docs/splitting-a-real-file.md).
+
 ## Dependencies
 
 `sflit` is a self-contained binary with no external runtime dependencies.
