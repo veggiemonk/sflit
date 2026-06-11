@@ -26,31 +26,22 @@ func newFileSnapshot(path string, data []byte) fileSnapshot {
 	return fileSnapshot{path: path, sum: sha256.Sum256(data), exists: true}
 }
 
-// parseGoFile parses a Go source file with comments attached to nodes.
-// The returned FileSet must be used for all subsequent position lookups.
-// The snapshot captures the bytes that were parsed, for commit-time verify.
+// parseGoFile parses a Go source file with comments attached to nodes into
+// a fresh FileSet, which must be used for all subsequent position lookups.
+// Source and sink each get their own FileSet (see parseGoFileIfExists).
+// Hash and AST come from one read so the snapshot matches what was parsed,
+// for commit-time verify.
 func parseGoFile(path string) (*token.FileSet, *ast.File, fileSnapshot, error) {
-	fset := token.NewFileSet()
-	file, snap, err := parseGoFileInto(fset, path)
-	if err != nil {
-		return nil, nil, fileSnapshot{}, err
-	}
-	return fset, file, snap, nil
-}
-
-// parseGoFileInto parses path into the given fset. Source and sink must share
-// one fset so positions remain comparable when decls travel between them.
-// Hash and AST come from one read so the snapshot matches what was parsed.
-func parseGoFileInto(fset *token.FileSet, path string) (*ast.File, fileSnapshot, error) {
 	src, err := os.ReadFile(filepath.Clean(path))
 	if err != nil {
-		return nil, fileSnapshot{}, fmt.Errorf("read %s: %w", path, err)
+		return nil, nil, fileSnapshot{}, fmt.Errorf("read %s: %w", path, err)
 	}
+	fset := token.NewFileSet()
 	file, err := parser.ParseFile(fset, path, src, parser.ParseComments)
 	if err != nil {
-		return nil, fileSnapshot{}, fmt.Errorf("parse %s: %w", path, err)
+		return nil, nil, fileSnapshot{}, fmt.Errorf("parse %s: %w", path, err)
 	}
-	return file, newFileSnapshot(path, src), nil
+	return fset, file, newFileSnapshot(path, src), nil
 }
 
 // parseGoFileIfExists is like parseGoFile but returns nil ASTs and an

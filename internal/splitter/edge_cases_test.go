@@ -2,7 +2,7 @@ package splitter
 
 import "testing"
 
-func TestBuildConstraintLinesFromBytes(t *testing.T) {
+func TestBuildConstraintLinesFromAST(t *testing.T) {
 	tests := []struct {
 		name string
 		src  string
@@ -49,9 +49,10 @@ func TestBuildConstraintLinesFromBytes(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildConstraintLinesFromBytes([]byte(tt.src))
+			_, file := mustParse(t, tt.src)
+			got := buildConstraintLinesFromAST(file)
 			if !sameStringSlice(got, tt.want) {
-				t.Fatalf("buildConstraintLinesFromBytes() = %#v, want %#v", got, tt.want)
+				t.Fatalf("buildConstraintLinesFromAST() = %#v, want %#v", got, tt.want)
 			}
 		})
 	}

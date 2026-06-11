@@ -8,7 +8,9 @@
     "moves between source and sink files with different or absent build constraints on either side",
     "cgo source files using import C",
     "source files with dot imports",
-    "copying (move=false) into a sink in the source's own directory, because the source keeps the declarations and the package would gain duplicates; use move=true or a sink in a different directory"
+    "copying (move=false) into a sink in the source's own directory, because the source keeps the declarations and the package would gain duplicates; use move=true or a sink in a different directory",
+    "splits into a different directory (a different package) when a moved declaration references a top-level name staying behind in the source file, or a remaining declaration references a name that moves away — either file would stop compiling; move them together or refactor first (file-local check: sibling files of the source are not seen)",
+    "splits into a sink that imports a different path under an alias the source also uses; rename one of the imports first"
   ],
   "concurrency": "Safe to fan out N concurrent invocations on the same files with no external coordination. Each run hashes source and sink at parse and verifies them under a short per-file lock at commit; a conflicting write (sflit or any other tool) triggers a re-run against the fresh content, up to -retries times. Sidecar lock files (.\u003cname\u003e.sflit.lock) are removed on release; on windows they are left behind (best-effort platform) and are safe to ignore.",
   "description": "Moves or copies top-level Go declarations (functions, methods, types, vars, consts) between files through the AST. Files are re-parsed and reprinted through gofmt; imports are updated in written files. Comments associated with moved declarations travel with them. Conservatively refuses any operation that could change what the program means.",

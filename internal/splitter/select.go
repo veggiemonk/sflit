@@ -9,19 +9,9 @@ import (
 	"slices"
 )
 
-type MatchKind int
-
-const (
-	KindFunc MatchKind = iota
-	KindMethod
-	KindTypeDecl
-	KindValueDecl
-)
-
 type Match struct {
 	Decl      ast.Decl
 	Origin    *SpecOrigin
-	Kind      MatchKind
 	Synthetic bool
 }
 
@@ -72,22 +62,18 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 					if err := rejectInitSplit(x); err != nil {
 						return nil, err
 					}
-					kind := KindFunc
-					if isMethod {
-						kind = KindMethod
-					}
-					out = append(out, Match{Decl: x, Kind: kind})
+					out = append(out, Match{Decl: x})
 				}
 			case cfg.Receiver != "" && re == nil:
 				// receiver-only: every method of that receiver.
 				if isMethod && receiverBaseName(x.Recv.List[0].Type) == cfg.Receiver {
-					out = append(out, Match{Decl: x, Kind: KindMethod})
+					out = append(out, Match{Decl: x})
 				}
 			case cfg.Receiver != "" && re != nil:
 				// receiver + regex: matching methods only.
 				if isMethod && receiverBaseName(x.Recv.List[0].Type) == cfg.Receiver &&
 					re.MatchString(x.Name.Name) {
-					out = append(out, Match{Decl: x, Kind: KindMethod})
+					out = append(out, Match{Decl: x})
 				}
 			}
 		case *ast.GenDecl:
@@ -163,7 +149,7 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 	}
 	if len(matchIdx) == len(gd.Specs) {
 		// All specs match → move the whole group decl.
-		out = append(out, Match{Decl: gd, Kind: KindTypeDecl})
+		out = append(out, Match{Decl: gd})
 		return out
 	}
 	// Partial match → narrow. Build synthetics for matched specs; the
@@ -174,7 +160,6 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 		syn := syntheticGenDecl(gd, s)
 		out = append(out, Match{
 			Decl:      syn,
-			Kind:      KindTypeDecl,
 			Synthetic: true,
 			Origin:    &SpecOrigin{Decl: gd, Spec: s},
 		})
@@ -244,7 +229,7 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
 		return nil, nil
 	}
 	if allMatch {
-		return []Match{{Decl: gd, Kind: KindValueDecl}}, nil
+		return []Match{{Decl: gd}}, nil
 	}
 
 	var out []Match
@@ -257,7 +242,6 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
 			syn := syntheticGenDecl(gd, pm.spec)
 			out = append(out, Match{
 				Decl:      syn,
-				Kind:      KindValueDecl,
 				Synthetic: true,
 				Origin:    &SpecOrigin{Decl: gd, Spec: pm.spec},
 			})
@@ -278,7 +262,6 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
 			syn := syntheticGenDecl(gd, split)
 			out = append(out, Match{
 				Decl:      syn,
-				Kind:      KindValueDecl,
 				Synthetic: true,
 				Origin:    &SpecOrigin{Decl: gd, Spec: pm.spec, Names: []int{j}},
 			})

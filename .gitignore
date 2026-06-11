@@ -3,3 +3,6 @@
 /dist
 /.worktrees
 .claude/worktrees
+
+# pi delegation logs (local artifacts)
+.agent-runs/

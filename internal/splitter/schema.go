@@ -63,6 +63,8 @@ func toolSchemaJSON() []byte {
 			"cgo source files using import C",
 			"source files with dot imports",
 			"copying (move=false) into a sink in the source's own directory, because the source keeps the declarations and the package would gain duplicates; use move=true or a sink in a different directory",
+			"splits into a different directory (a different package) when a moved declaration references a top-level name staying behind in the source file, or a remaining declaration references a name that moves away — either file would stop compiling; move them together or refactor first (file-local check: sibling files of the source are not seen)",
+			"splits into a sink that imports a different path under an alias the source also uses; rename one of the imports first",
 		},
 		"selection_rules": []map[string]string{
 			{

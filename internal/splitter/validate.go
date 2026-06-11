@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -179,6 +180,12 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 	if err := validateBuildConstraints(plan); err != nil {
 		return err
 	}
+	if err := validateImportAliases(plan, origSink, origSrc); err != nil {
+		return err
+	}
+	if err := validateNoStrandedRefs(plan); err != nil {
+		return err
+	}
 	// Collisions: Go package-namespace keys from the appended tail against keys
 	// from the pre-existing head. This prevents writing invalid Go such as a
 	// sink that already has `var Foo` receiving `func Foo`.
@@ -216,6 +223,235 @@ func sameDir(a, b string) (bool, error) {
 		return false, fmt.Errorf("resolve directory of %s: %w", b, err)
 	}
 	return da == db, nil
+}
+
+// validateImportAliases rejects a split whose sink already binds an alias
+// the source binds to a different path: carryNamedImports re-adds the
+// source's named imports to the combined sink, so the written file would
+// declare one alias twice and not compile. Like the dot-import rule, the
+// check is file-wide rather than per moved declaration — conservative, but
+// it fails before anything is written.
+func validateImportAliases(plan Plan, origSink, origSrc *ast.File) error {
+	if origSink == nil {
+		return nil
+	}
+	sinkPaths := make(map[string]string, len(origSink.Imports))
+	for _, imp := range origSink.Imports {
+		name, path, err := namedImport(imp)
+		if err != nil {
+			return err
+		}
+		if name != "" {
+			sinkPaths[name] = path
+		}
+	}
+	for _, imp := range origSrc.Imports {
+		name, path, err := namedImport(imp)
+		if err != nil {
+			return err
+		}
+		if name == "" {
+			continue
+		}
+		if sinkPath, ok := sinkPaths[name]; ok && sinkPath != path {
+			return fmt.Errorf(
+				"cannot write to %s: source %s imports %q as %s but the sink imports %q under the same alias; rename one of the imports first",
+				plan.SinkPath, plan.SrcPath, path, name, sinkPath,
+			)
+		}
+	}
+	return nil
+}
+
+// namedImport returns the alias and unquoted path of imp; name is "" for
+// unaliased, blank, and dot imports.
+func namedImport(imp *ast.ImportSpec) (name, path string, err error) {
+	if imp.Name == nil || imp.Name.Name == "_" || imp.Name.Name == "." {
+		return "", "", nil
+	}
+	path, err = strconv.Unquote(imp.Path.Value)
+	if err != nil {
+		return "", "", fmt.Errorf("import path %s: %w", imp.Path.Value, err)
+	}
+	return imp.Name.Name, path, nil
+}
+
+// validateNoStrandedRefs rejects cross-directory splits that would tear
+// package-internal references apart: the sink lives in a different
+// directory, hence a different package instance, so a moved declaration
+// referencing a top-level name that stays behind — or, on move, a staying
+// declaration referencing a name that leaves — produces files that cannot
+// compile. Resolution is parser-level and file-local: locals that shadow a
+// top-level name resolve to the local and are not flagged, and references
+// from or to sibling files of the source package are invisible to this
+// check (non-goal: whole-package analysis needs go/types and the full
+// directory).
+func validateNoStrandedRefs(plan Plan) error {
+	same, err := sameDir(plan.SrcPath, plan.SinkPath)
+	if err != nil {
+		return err
+	}
+	if same || len(plan.extracted) == 0 {
+		return nil
+	}
+
+	// Top-level declaration nodes of the source file; idents resolve to
+	// these via ast.Object.Decl. ImportSpecs are excluded — imports are
+	// carried and re-resolved by goimports, never stranded.
+	topLevel := make(map[any]bool)
+	for _, d := range plan.SrcFile.Decls {
+		switch x := d.(type) {
+		case *ast.FuncDecl:
+			topLevel[x] = true
+		case *ast.GenDecl:
+			if x.Tok == token.IMPORT {
+				continue
+			}
+			for _, s := range x.Specs {
+				topLevel[s] = true
+			}
+		}
+	}
+
+	// What travels with the selection: whole funcs, whole specs, or single
+	// names of a partially split multi-name spec (mirrors applyMove's
+	// classification of the same Extracted entries).
+	travelling := make(map[any]bool, len(plan.extracted))
+	travellingNames := make(map[*ast.ValueSpec]map[string]bool)
+	for _, e := range plan.extracted {
+		o := e.Origin
+		switch {
+		case o == nil:
+			if gd, ok := e.Decl.(*ast.GenDecl); ok {
+				for _, s := range gd.Specs {
+					travelling[s] = true
+				}
+				continue
+			}
+			travelling[e.Decl] = true
+		case o.Names == nil:
+			travelling[o.Spec] = true
+		default:
+			vs, ok := o.Spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			if travellingNames[vs] == nil {
+				travellingNames[vs] = make(map[string]bool, len(o.Names))
+			}
+			for _, j := range o.Names {
+				travellingNames[vs][vs.Names[j].Name] = true
+			}
+		}
+	}
+
+	// classify reports whether id resolves to a top-level name of the
+	// source file, and whether that name travels with the selection.
+	classify := func(id *ast.Ident) (isTopLevel, travels bool) {
+		if id.Obj == nil || id.Obj.Decl == nil {
+			return false, false
+		}
+		decl := id.Obj.Decl
+		if !topLevel[decl] {
+			return false, false
+		}
+		if travelling[decl] {
+			return true, true
+		}
+		if vs, ok := decl.(*ast.ValueSpec); ok && travellingNames[vs] != nil {
+			return true, travellingNames[vs][id.Name]
+		}
+		return true, false
+	}
+
+	// refs collects, deduplicated, the top-level names n references whose
+	// travel direction matches travels.
+	refs := func(n ast.Node, travels bool) []string {
+		var out []string
+		seen := make(map[string]bool)
+		ast.Inspect(n, func(node ast.Node) bool {
+			id, ok := node.(*ast.Ident)
+			if !ok {
+				return true
+			}
+			if isTop, t := classify(id); isTop && t == travels && !seen[id.Name] {
+				seen[id.Name] = true
+				out = append(out, id.Name)
+			}
+			return true
+		})
+		return out
+	}
+
+	// Forward: a moved declaration must not reference names staying behind.
+	for _, e := range plan.extracted {
+		if stranded := refs(e.Decl, false); len(stranded) > 0 {
+			return fmt.Errorf(
+				"cannot split %s into different directory %s: moved declaration %s references %s, which stays behind in the source package; move them together or refactor first",
+				plan.SrcPath, plan.SinkPath,
+				strings.Join(declKeys(e.Decl), ", "), strings.Join(stranded, ", "),
+			)
+		}
+	}
+
+	// Reverse, move only (a copy removes nothing): a staying declaration
+	// must not reference names that leave.
+	if !plan.Move {
+		return nil
+	}
+	torn := func(n ast.Node, keys []string) error {
+		if away := refs(n, true); len(away) > 0 {
+			return fmt.Errorf(
+				"cannot move out of %s into different directory %s: remaining declaration %s references %s, which would move away; move them together or refactor first",
+				plan.SrcPath, plan.SinkPath,
+				strings.Join(keys, ", "), strings.Join(away, ", "),
+			)
+		}
+		return nil
+	}
+	for _, d := range plan.SrcFile.Decls {
+		switch x := d.(type) {
+		case *ast.FuncDecl:
+			if travelling[x] {
+				continue
+			}
+			if err := torn(x, declKeys(x)); err != nil {
+				return err
+			}
+		case *ast.GenDecl:
+			if x.Tok == token.IMPORT {
+				continue
+			}
+			for _, s := range x.Specs {
+				if travelling[s] {
+					continue
+				}
+				if vs, ok := s.(*ast.ValueSpec); ok && travellingNames[vs] != nil {
+					// Partially split spec: only the kept names' values
+					// (1:1 with names — the shared-value case is rejected
+					// upstream) and the shared type stay behind.
+					if vs.Type != nil {
+						if err := torn(vs.Type, specKeys(x.Tok, vs)); err != nil {
+							return err
+						}
+					}
+					for j, n := range vs.Names {
+						if travellingNames[vs][n.Name] || j >= len(vs.Values) {
+							continue
+						}
+						if err := torn(vs.Values[j], []string{n.Name}); err != nil {
+							return err
+						}
+					}
+					continue
+				}
+				if err := torn(s, specKeys(x.Tok, s)); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
 }
 
 func validateBuildConstraints(plan Plan) error {

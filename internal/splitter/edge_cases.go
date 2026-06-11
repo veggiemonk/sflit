@@ -28,26 +28,6 @@ func buildConstraintLinesFromAST(file *ast.File) []string {
 	return lines
 }
 
-func buildConstraintLinesFromBytes(src []byte) []string {
-	var lines []string
-	for line := range bytes.SplitSeq(src, []byte("\n")) {
-		text := strings.TrimSpace(string(line))
-		if text == "" {
-			continue
-		}
-		if strings.HasPrefix(text, "package ") || text == "package" {
-			break
-		}
-		if !strings.HasPrefix(text, "//") {
-			break
-		}
-		if isBuildConstraintLine(text) {
-			lines = append(lines, text)
-		}
-	}
-	return lines
-}
-
 func sameStringSlice(a, b []string) bool {
 	if len(a) != len(b) {
 		return false

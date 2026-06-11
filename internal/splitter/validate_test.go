@@ -27,8 +27,148 @@ func TestValidate_PackageMismatch(t *testing.T) {
 	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
 	ex := extractMatches(fset, src, ms)
 	plan := buildPlan(fset, nil, "src.go", "sink.go", src, sink, ex, false)
-	if err := validatePlan(plan, sink, src); err == nil || !strings.Contains(err.Error(), "package") {
+	if err := validatePlan(plan, sink, src); err == nil ||
+		!strings.Contains(err.Error(), `sink sink.go has package "q", but source src.go has package "p"`) {
 		t.Fatalf("want package mismatch err, got %v", err)
+	}
+}
+
+func TestValidate_NewSinkRejectsBuildConstrainedSource(t *testing.T) {
+	fset, src := mustParse(t, "//go:build linux\n\npackage p\nfunc Foo(){}\n")
+	ms, _ := selectDecls(src, Config{Regex: "^Foo", Move: true})
+	ex := extractMatches(fset, src, ms)
+	plan := buildPlan(fset, nil, "src.go", "sub/sink.go", src, nil, ex, true)
+	err := validatePlan(plan, nil, src)
+	if err == nil {
+		t.Fatal("want build constraint err, got nil")
+	}
+	want := "cannot move build-constrained declarations into sink with different build constraints: new sink without matching constraints for source src.go and sink sub/sink.go"
+	if err.Error() != want {
+		t.Fatalf("error = %q, want %q", err.Error(), want)
+	}
+}
+
+func TestValidate_ImportAliasCollision(t *testing.T) {
+	fset, src := mustParse(t, "package p\n\nimport f \"fmt\"\n\nfunc Foo() { f.Println() }\n")
+	sinkFset, sink := mustParse(t, "package p\n\nimport f \"flag\"\n\nfunc Bar() { f.Arg(0) }\n")
+	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
+	ex := extractMatches(fset, src, ms)
+	plan := buildPlan(fset, sinkFset, "src.go", filepath.Join("other", "sink.go"), src, sink, ex, true)
+	err := validatePlan(plan, sink, src)
+	if err == nil || !strings.Contains(err.Error(), "same alias") {
+		t.Fatalf("want alias-collision err (sink output could not compile), got %v", err)
+	}
+	if !strings.Contains(err.Error(), `"fmt"`) || !strings.Contains(err.Error(), `"flag"`) {
+		t.Fatalf("error should name both paths bound to the alias: %v", err)
+	}
+}
+
+func TestValidate_ImportAliasSamePathOK(t *testing.T) {
+	fset, src := mustParse(t, "package p\n\nimport f \"fmt\"\n\nfunc Foo() { f.Println() }\n")
+	sinkFset, sink := mustParse(t, "package p\n\nimport f \"fmt\"\n\nfunc Bar() { f.Println() }\n")
+	ms, _ := selectDecls(src, Config{Regex: "^Foo"})
+	ex := extractMatches(fset, src, ms)
+	plan := buildPlan(fset, sinkFset, "src.go", filepath.Join("other", "sink.go"), src, sink, ex, true)
+	if err := validatePlan(plan, sink, src); err != nil {
+		t.Fatalf("same alias for the same path is not a collision: %v", err)
+	}
+}
+
+// TestValidate_StrandedRefs covers the cross-directory stranding hole: the
+// sink is a different package instance, so a moved declaration referencing
+// a name that stays behind — or, on move, a remaining declaration
+// referencing a name that leaves — yields output that cannot compile.
+func TestValidate_StrandedRefs(t *testing.T) {
+	crossDirSink := filepath.Join("otherdir", "sink.go")
+	cases := []struct {
+		name    string
+		src     string
+		regex   string
+		sink    string
+		move    bool
+		wantErr string // empty = valid
+	}{
+		{
+			name:    "moved func references staying helper",
+			src:     "package p\n\nfunc helper() int { return 1 }\n\nfunc Foo() int { return helper() }\n",
+			regex:   "^Foo$",
+			sink:    crossDirSink,
+			move:    true,
+			wantErr: "helper",
+		},
+		{
+			name:    "copy also strands sink references",
+			src:     "package p\n\nfunc helper() int { return 1 }\n\nfunc Foo() int { return helper() }\n",
+			regex:   "^Foo$",
+			sink:    crossDirSink,
+			move:    false,
+			wantErr: "helper",
+		},
+		{
+			name:    "remaining func references moved decl",
+			src:     "package p\n\nfunc Moved() int { return 1 }\n\nfunc stays() int { return Moved() }\n",
+			regex:   "^Moved$",
+			sink:    crossDirSink,
+			move:    true,
+			wantErr: "Moved",
+		},
+		{
+			name:  "self-contained move is fine",
+			src:   "package p\n\nfunc helper() int { return 1 }\n\nfunc Foo() int { return 2 }\n",
+			regex: "^Foo$",
+			sink:  crossDirSink,
+			move:  true,
+		},
+		{
+			name:  "same-directory move keeps the package together",
+			src:   "package p\n\nfunc helper() int { return 1 }\n\nfunc Foo() int { return helper() }\n",
+			regex: "^Foo$",
+			sink:  "sink.go",
+			move:  true,
+		},
+		{
+			name:  "local shadowing a top-level name is not a reference",
+			src:   "package p\n\nfunc helper() int { return 1 }\n\nfunc Foo() int { helper := 2; return helper }\n",
+			regex: "^Foo$",
+			sink:  crossDirSink,
+			move:  true,
+		},
+		{
+			name:  "references travelling together are fine",
+			src:   "package p\n\nfunc FooHelper() int { return 1 }\n\nfunc Foo() int { return FooHelper() }\n",
+			regex: "^Foo",
+			sink:  crossDirSink,
+			move:  true,
+		},
+		{
+			name:    "moved var references staying const",
+			src:     "package p\n\nconst base = 10\n\nvar Limit = base * 2\n",
+			regex:   "^Limit$",
+			sink:    crossDirSink,
+			move:    true,
+			wantErr: "base",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			fset, src := mustParse(t, tc.src)
+			ms, err := selectDecls(src, Config{Regex: tc.regex})
+			if err != nil {
+				t.Fatal(err)
+			}
+			ex := extractMatches(fset, src, ms)
+			plan := buildPlan(fset, nil, "src.go", tc.sink, src, nil, ex, tc.move)
+			err = validatePlan(plan, nil, src)
+			if tc.wantErr == "" {
+				if err != nil {
+					t.Fatalf("want valid plan, got %v", err)
+				}
+				return
+			}
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("want stranded-reference err naming %q, got %v", tc.wantErr, err)
+			}
+		})
 	}
 }
 

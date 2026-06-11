@@ -21,6 +21,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pipeline attempts the run took. `1` means no commit-time conflict;
   higher values mean concurrent writers forced re-runs — observability
   for orchestrators fanning out parallel invocations (ADR-0001).
+- Splits into a different directory (a different package) are now rejected
+  when they would tear package-internal references apart: a moved
+  declaration referencing a top-level name that stays behind in the source
+  file, or — on move — a remaining declaration referencing a name that
+  moves away. Previously sflit wrote files that did not compile. The check
+  is file-local; references involving sibling files of the source package
+  are not seen.
+- Splits into a sink that imports a different path under an alias the
+  source also uses are now rejected; the carried named import would have
+  declared the alias twice and the sink would not compile.
 
 ### Changed
 

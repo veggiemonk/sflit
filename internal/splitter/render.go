@@ -7,7 +7,6 @@ import (
 	"go/parser"
 	"go/printer"
 	"go/token"
-	"strconv"
 
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/imports"
@@ -66,20 +65,19 @@ func renderFiles(plan Plan) ([]byte, []byte, error) {
 // from the identifier alone — `f.Println` says nothing about "fmt". Unused
 // ones are pruned by the imports.Process call that follows. Blank imports are
 // excluded: goimports never prunes them, so carrying them would duplicate
-// side-effect imports into every sink. Dot imports are rejected upstream by
-// validation.
+// side-effect imports into every sink. Dot imports and alias collisions with
+// the sink's own imports are rejected upstream by validation.
 func carryNamedImports(filename string, combined []byte, src *ast.File) ([]byte, error) {
-	type namedImport struct{ name, path string }
-	var named []namedImport
+	type aliased struct{ name, path string }
+	var named []aliased
 	for _, imp := range src.Imports {
-		if imp.Name == nil || imp.Name.Name == "_" || imp.Name.Name == "." {
-			continue
-		}
-		path, err := strconv.Unquote(imp.Path.Value)
+		name, path, err := namedImport(imp)
 		if err != nil {
-			return nil, fmt.Errorf("import path %s: %w", imp.Path.Value, err)
+			return nil, err
 		}
-		named = append(named, namedImport{imp.Name.Name, path})
+		if name != "" {
+			named = append(named, aliased{name, path})
+		}
 	}
 	if len(named) == 0 {
 		return combined, nil

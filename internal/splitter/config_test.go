@@ -1,9 +1,40 @@
 package splitter
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
+
+func TestConfigRetries(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  Config
+		want int
+	}{
+		{name: "zero uses default", cfg: Config{Retries: 0}, want: defaultRetries},
+		{name: "negative uses default", cfg: Config{Retries: -3}, want: defaultRetries},
+		{name: "positive passes through", cfg: Config{Retries: 7}, want: 7},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := tc.cfg.retries(); got != tc.want {
+				t.Fatalf("retries() = %d, want %d", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestRunMissingSourceReturnsUsageError(t *testing.T) {
+	_, err := Run(Config{})
+	if err == nil {
+		t.Fatal("Run(Config{}) error = nil, want UsageError")
+	}
+	var usageErr UsageError
+	if !errors.As(err, &usageErr) {
+		t.Fatalf("Run(Config{}) error = %T %[1]v, want UsageError", err)
+	}
+}
 
 func TestConfigValidate(t *testing.T) {
 	cases := []struct {

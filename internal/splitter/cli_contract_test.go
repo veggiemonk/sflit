@@ -2,9 +2,13 @@ package splitter
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/veggiemonk/sflit/internal/version"
 )
 
 func TestRunCLI_UsageErrorsExit2(t *testing.T) {
@@ -29,6 +33,7 @@ func TestRunCLI_UsageErrorsExit2(t *testing.T) {
 			args: []string{"-source", "a.go", "-sink", "b.go", "-regex", "("},
 			want: "invalid -regex",
 		},
+		{name: "unknown flag", args: []string{"-nonsense"}, want: "flag provided but not defined"},
 	}
 
 	for _, tt := range tests {
@@ -43,6 +48,25 @@ func TestRunCLI_UsageErrorsExit2(t *testing.T) {
 			}
 			if !strings.Contains(stderr.String(), tt.want) {
 				t.Fatalf("stderr = %q, want substring %q", stderr.String(), tt.want)
+			}
+		})
+	}
+}
+
+func TestRunCLI_VersionFlags(t *testing.T) {
+	for _, args := range [][]string{{"-v"}, {"-version"}, {"--version"}} {
+		t.Run(args[0], func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			got := RunCLI(args, nil, &stdout, &stderr)
+			if got != 0 {
+				t.Fatalf("exit code = %d, want 0; stderr:\n%s", got, stderr.String())
+			}
+			want := fmt.Sprintln(version.Get())
+			if stdout.String() != want {
+				t.Fatalf("stdout = %q, want %q", stdout.String(), want)
+			}
+			if stderr.Len() != 0 {
+				t.Fatalf("stderr = %q, want empty", stderr.String())
 			}
 		})
 	}
@@ -115,6 +139,33 @@ func TestRunCLI_CollisionIncludesSinkAndName(t *testing.T) {
 	}
 }
 
+func TestRunCLI_IdempotentMoveSecondRunNoMatch(t *testing.T) {
+	dir := t.TempDir()
+	source := dir + "/a.go"
+	sink := dir + "/b.go"
+	writeFileForCLITest(t, source, "package p\nfunc Foo(){}\nfunc Bar(){}\n")
+
+	args := []string{"-source", source, "-sink", sink, "-regex", "Foo", "-move"}
+	var stdout, stderr bytes.Buffer
+	got := RunCLI(args, nil, &stdout, &stderr)
+	if got != 0 {
+		t.Fatalf("first exit code = %d, want 0; stderr:\n%s", got, stderr.String())
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	got = RunCLI(args, nil, &stdout, &stderr)
+	if got != 1 {
+		t.Fatalf("second exit code = %d, want 1; stderr:\n%s", got, stderr.String())
+	}
+	if stdout.Len() != 0 {
+		t.Fatalf("second stdout = %q, want empty", stdout.String())
+	}
+	if !strings.Contains(stderr.String(), "no declarations matched") {
+		t.Fatalf("second stderr = %q, want no declarations matched", stderr.String())
+	}
+}
+
 func TestRunCLI_SameDirCopyRejectedExit1(t *testing.T) {
 	dir := t.TempDir()
 	source := dir + "/a.go"
@@ -145,8 +196,9 @@ func writeFileForCLITest(t *testing.T, path, content string) {
 
 func TestHelpListsAllVersionFlags(t *testing.T) {
 	for _, want := range []string{"-v", "-version", "--version"} {
-		if !strings.Contains(helpText, want) {
-			t.Fatalf("helpText missing %q", want)
+		re := regexp.MustCompile(`(^|[\s,;()])` + regexp.QuoteMeta(want) + `($|[\s,;()])`)
+		if !re.MatchString(helpText) {
+			t.Fatalf("helpText missing distinct token %q", want)
 		}
 	}
 }
