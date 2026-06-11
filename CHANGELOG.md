@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `--tool-schema` now documents the `-debug` flag (it was missing) and shows
+  the `attempts` field in its example outputs; the documented `retries`
+  default is tied to the implementation constant instead of duplicating it.
 - Lock acquisition order is canonicalized to prevent deadlock between
   concurrent runs; collision keys handle parenthesized receivers.
 - A doc comment on a spec split out of a grouped `var`/`const`/`type` block

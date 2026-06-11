@@ -169,6 +169,24 @@ func countNonImportDecls(decls []ast.Decl) int {
 	return n
 }
 
+// cliFlagSet builds sflit's flag set, bound to cfg and the CLI-only output
+// toggles. Extracted from RunCLI so the drift tests can cross-check the
+// tool schema against the real flags instead of a copy of them.
+func cliFlagSet(stderr io.Writer, cfg *Config, jsonOutput, debug *bool) *flag.FlagSet {
+	fs := flag.NewFlagSet("sflit", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	fs.Usage = func() { printHelp(stderr) }
+	fs.StringVar(&cfg.Source, "source", "", "source Go file")
+	fs.StringVar(&cfg.Sink, "sink", "", "sink Go file")
+	fs.StringVar(&cfg.Regex, "regex", "", "name regex")
+	fs.StringVar(&cfg.Receiver, "receiver", "", "receiver type name")
+	fs.BoolVar(&cfg.Move, "move", false, "delete matched decls from source")
+	fs.IntVar(&cfg.Retries, "retries", defaultRetries, "max re-runs after a concurrent-write conflict")
+	fs.BoolVar(jsonOutput, "json", false, "print structured JSON result to stdout")
+	fs.BoolVar(debug, "debug", false, "print debug logs to stderr")
+	return fs
+}
+
 // RunCLI is the entry point used by main.go and by the testscript harness.
 // It parses args from scratch (not via the global flag set).
 func RunCLI(args []string, _ io.Reader, stdout io.Writer, stderr io.Writer) int {
@@ -191,20 +209,10 @@ func RunCLI(args []string, _ io.Reader, stdout io.Writer, stderr io.Writer) int 
 		return 0
 	}
 
-	fs := flag.NewFlagSet("sflit", flag.ContinueOnError)
-	fs.SetOutput(stderr)
-	fs.Usage = func() { printHelp(stderr) }
 	var cfg Config
 	var jsonOutput bool
 	var debug bool
-	fs.StringVar(&cfg.Source, "source", "", "source Go file")
-	fs.StringVar(&cfg.Sink, "sink", "", "sink Go file")
-	fs.StringVar(&cfg.Regex, "regex", "", "name regex")
-	fs.StringVar(&cfg.Receiver, "receiver", "", "receiver type name")
-	fs.BoolVar(&cfg.Move, "move", false, "delete matched decls from source")
-	fs.IntVar(&cfg.Retries, "retries", defaultRetries, "max re-runs after a concurrent-write conflict")
-	fs.BoolVar(&jsonOutput, "json", false, "print structured JSON result to stdout")
-	fs.BoolVar(&debug, "debug", false, "print debug logs to stderr")
+	fs := cliFlagSet(stderr, &cfg, &jsonOutput, &debug)
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}

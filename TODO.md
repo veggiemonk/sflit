@@ -14,13 +14,6 @@ Entry format:
 
 ---
 
-## Pin agent-facing surfaces with golden files
-
-- **Kind:** deferred improvement.
-- **Context:** help text (`sflit -h`, 92 lines — agents are routed through it), `--tool-schema`, and the `-json` payload are the product's contract surfaces and are pinned only by substring/regex fragments (`help.txt` pins 5 lines of 92; `tool_schema.txt` greps key names; `result_test.go` round-trips through the same struct so tag renames pass). `testdata/golden/` was scaffolded for this and holds only a `.gitkeep`. Known undetected drift: the `debug` flag is absent from the tool schema; `retries.default: 5` in schema.go duplicates `defaultRetries` with no tie.
-- **Why deferred:** found during test-suite review; sizable batch of golden fixtures plus schema-vs-FlagSet drift tests.
-- **Acceptance:** `cmp`-against-golden for help, tool schema, and full `-json` success payload; a drift test cross-checks schema properties/defaults/exit-codes against the FlagSet, `defaultRetries`, and `RunCLI`'s exit mapping.
-
 ## Small unguarded contracts and vacuous tests
 
 - **Kind:** deferred improvement.

@@ -1,0 +1,11 @@
+{
+  "source": "big.go",
+  "sink": "filter.go",
+  "matched": [
+    "FilterA",
+    "FilterB"
+  ],
+  "declarations_remaining": 1,
+  "move": true,
+  "attempts": 1
+}

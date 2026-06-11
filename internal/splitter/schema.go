@@ -39,7 +39,12 @@ func toolSchemaJSON() []byte {
 				"retries": map[string]any{
 					"type":        "integer",
 					"description": "Max re-runs after a concurrent-write conflict (another process changed source or sink between parse and commit). Rarely needs changing.",
-					"default":     5,
+					"default":     defaultRetries,
+				},
+				"debug": map[string]any{
+					"type":        "boolean",
+					"description": "Print debug logs to stderr",
+					"default":     false,
 				},
 			},
 			"required": []string{"source", "sink"},
@@ -80,6 +85,7 @@ func toolSchemaJSON() []byte {
 					"move":                   false,
 					"matched":                []string{"FilterByName", "FilterByAge"},
 					"declarations_remaining": 15,
+					"attempts":               1,
 				},
 			},
 			{
@@ -95,6 +101,7 @@ func toolSchemaJSON() []byte {
 						"MyStruct.Validate",
 					},
 					"declarations_remaining": 12,
+					"attempts":               1,
 				},
 			},
 			{
@@ -106,6 +113,7 @@ func toolSchemaJSON() []byte {
 					"move":                   true,
 					"matched":                []string{"FilterByName"},
 					"declarations_remaining": 2,
+					"attempts":               1,
 				},
 			},
 		},
