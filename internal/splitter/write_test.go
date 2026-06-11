@@ -2,9 +2,12 @@ package splitter
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -241,6 +244,173 @@ func TestCommitSingle_VerifiesSourceSnapshot(t *testing.T) {
 	}
 	if _, err := os.Stat(k); !os.IsNotExist(err) {
 		t.Fatal("conflicting copy must not create sink")
+	}
+}
+
+// noTempLitter asserts no temp file survived in dir: every failure path in
+// the commit atom must clean up after itself, or aborted runs accumulate
+// big.go.tmp* turds next to the sources.
+func noTempLitter(t *testing.T, dir string) {
+	t.Helper()
+	litter, err := filepath.Glob(filepath.Join(dir, "*.tmp*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(litter) > 0 {
+		t.Errorf("temp-file litter left behind: %v", litter)
+	}
+}
+
+// TestWritePair_SinkRenameFails pins half of ADR-0001's atomicity story:
+// the sink is renamed first, so when that rename fails the source has not
+// been touched — no declarations were removed without landing anywhere.
+// The sink path being an existing directory makes the rename fail.
+func TestWritePair_SinkRenameFails(t *testing.T) {
+	dir := t.TempDir()
+	s := filepath.Join(dir, "a.go")
+	if err := os.WriteFile(s, []byte("original"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	k := filepath.Join(dir, "sinkdir")
+	if err := os.Mkdir(k, 0o750); err != nil {
+		t.Fatal(err)
+	}
+
+	err := (commit{}).writePair(s, []byte("rendered"), k, []byte("moved"))
+	if err == nil {
+		t.Fatal("want sink-rename error, got nil")
+	}
+	if !strings.Contains(err.Error(), "rename sink") {
+		t.Errorf("error should name the failing step: %v", err)
+	}
+	got, readErr := os.ReadFile(filepath.Clean(s))
+	if readErr != nil || string(got) != "original" {
+		t.Errorf("source must be untouched when sink rename fails: %q (err %v)", got, readErr)
+	}
+	noTempLitter(t, dir)
+}
+
+// TestWritePair_SrcRenameFails pins the other half: the sink committed but
+// the source rename failed, so the user has duplicates but no data loss,
+// and the error must say so and name the sink that already holds the
+// declarations. The source path being a directory makes its rename fail.
+func TestWritePair_SrcRenameFails(t *testing.T) {
+	dir := t.TempDir()
+	s := filepath.Join(dir, "srcdir")
+	if err := os.Mkdir(s, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	k := filepath.Join(dir, "b.go")
+
+	err := (commit{}).writePair(s, []byte("rendered"), k, []byte("moved"))
+	if err == nil {
+		t.Fatal("want src-rename error, got nil")
+	}
+	if !strings.Contains(err.Error(), "sink already committed at "+k) {
+		t.Errorf("error must flag the committed sink for manual recovery: %v", err)
+	}
+	got, readErr := os.ReadFile(filepath.Clean(k))
+	if readErr != nil || string(got) != "moved" {
+		t.Errorf("sink must stay committed when src rename fails: %q (err %v)", got, readErr)
+	}
+	noTempLitter(t, dir)
+	noTempLitter(t, s) // srcdir is where the src temp was created
+}
+
+// TestCommitConflict_NoTempLitter: a conflicting commit writes nothing —
+// including the temp files it staged before taking the locks.
+func TestCommitConflict_NoTempLitter(t *testing.T) {
+	dir := t.TempDir()
+	s := filepath.Join(dir, "a.go")
+	k := filepath.Join(dir, "b.go")
+	snap := snapshotted(t, s, "original")
+	if err := os.WriteFile(s, []byte("mutated"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := commit{snaps: []fileSnapshot{snap, {path: k}}}
+	if err := c.writePair(s, []byte("rendered"), k, []byte("moved")); !errors.Is(err, errConflict) {
+		t.Fatalf("want errConflict, got %v", err)
+	}
+	noTempLitter(t, dir)
+
+	if err := c.writeSingle(k, []byte("copied")); !errors.Is(err, errConflict) {
+		t.Fatalf("writeSingle: want errConflict, got %v", err)
+	}
+	noTempLitter(t, dir)
+}
+
+// TestVerify_ReadErrorIsNotConflict pins verify's non-ENOENT branch: a
+// pre-image that cannot be re-read (here: permission denied) is an
+// operational error, not a retryable conflict — retrying cannot fix EACCES,
+// and masquerading would burn the retry budget hiding the real cause.
+func TestVerify_ReadErrorIsNotConflict(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0 does not block reads on windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root reads through permission bits")
+	}
+	dir := t.TempDir()
+	s := filepath.Join(dir, "a.go")
+	snap := snapshotted(t, s, "original")
+	if err := os.Chmod(s, 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(s, 0o600) })
+
+	err := (commit{snaps: []fileSnapshot{snap}}).verify()
+	if err == nil {
+		t.Fatal("want read error, got nil")
+	}
+	if errors.Is(err, errConflict) {
+		t.Fatalf("permission error must not masquerade as a retryable conflict: %v", err)
+	}
+	if !errors.Is(err, fs.ErrPermission) {
+		t.Errorf("want wrapped fs.ErrPermission, got %v", err)
+	}
+}
+
+// TestLockAllPartialAcquireRollback: when a later sidecar lock cannot be
+// acquired, the locks already taken must be released — otherwise an
+// aborted commit leaves the first file locked until process exit. The
+// second path's directory is read-only so its sidecar cannot be created.
+func TestLockAllPartialAcquireRollback(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("read-only directory bits do not block file creation on windows")
+	}
+	if os.Geteuid() == 0 {
+		t.Skip("root creates through permission bits")
+	}
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.go")
+	rodir := filepath.Join(dir, "ro")
+	if err := os.Mkdir(rodir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(rodir, 0o700) })
+	b := filepath.Join(rodir, "b.go") // sorts after a.go: acquired second
+
+	c := commit{snaps: []fileSnapshot{{path: a}, {path: b}}}
+	if _, err := c.lockAll(); err == nil {
+		t.Fatal("want lock error for read-only sidecar dir, got nil")
+	}
+
+	// a.go's lock must have been rolled back: a fresh acquire on it must
+	// not block (locks exclude between fds, so a leak blocks forever).
+	acquired := make(chan struct{})
+	go func() {
+		release, err := acquireFileLock(a)
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		close(acquired)
+		_ = release()
+	}()
+	select {
+	case <-acquired:
+	case <-time.After(10 * time.Second):
+		t.Fatal("first lock leaked: partial acquire was not rolled back")
 	}
 }
 

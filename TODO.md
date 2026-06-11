@@ -14,13 +14,6 @@ Entry format:
 
 ---
 
-## writePair crash-safety branches untested
-
-- **Kind:** deferred improvement.
-- **Context:** `write.go:118-126` — the ADR-0001 atomicity story: sink-rename fails → source untouched; src-rename fails after sink committed → "duplicates but no data loss" error naming the sink. Zero coverage; a reordering that renames source first would pass the suite. Also untested: temp-file litter after conflict/error (`cleanup`, write.go:103-106), `verify`'s non-ENOENT branch (write.go:78-79 — a permission error must not masquerade as a retryable conflict), `lockAll` partial-acquire rollback (write.go:59-62).
-- **Why deferred:** found during test-suite review; out of scope of the structural-oracle fix.
-- **Acceptance:** tests force each rename failure (e.g. sink path is a directory) and assert the documented invariant; a conflict path asserts no `*.tmp*` litter remains; a permission-denied re-read is asserted not-`errConflict`.
-
 ## Pin agent-facing surfaces with golden files
 
 - **Kind:** deferred improvement.
