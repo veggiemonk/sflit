@@ -3,6 +3,7 @@ package splitter_test
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"testing"
 
 	"github.com/veggiemonk/sflit/internal/splitter"
@@ -25,6 +26,28 @@ func TestMain(m *testing.M) {
 				os.Exit(1)
 			}
 			os.Exit(0)
+		},
+		// sflit-lockhold / sflit-lockstress are child processes for the
+		// multi-process lock tests in lock_multiprocess_test.go (ADR-0001
+		// release-on-death and cross-process lock-ordering claims).
+		"sflit-lockhold": func() {
+			if len(os.Args) != 2 {
+				fmt.Fprintln(os.Stderr, "usage: sflit-lockhold <target>")
+				os.Exit(2)
+			}
+			os.Exit(splitter.LockHoldMain(os.Args[1], os.Stdin, os.Stdout, os.Stderr))
+		},
+		"sflit-lockstress": func() {
+			if len(os.Args) < 3 {
+				fmt.Fprintln(os.Stderr, "usage: sflit-lockstress <iterations> <path>...")
+				os.Exit(2)
+			}
+			n, err := strconv.Atoi(os.Args[1])
+			if err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(2)
+			}
+			os.Exit(splitter.LockStressMain(n, os.Args[2:], os.Stderr))
 		},
 	})
 }

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -75,6 +76,43 @@ func TestLockAllCanonicalOrdering(t *testing.T) {
 	case <-done:
 	case <-time.After(10 * time.Second):
 		t.Fatal("deadlock: lockAll lock order differs across path spellings")
+	}
+}
+
+// TestCanonicalLockOrderCwdIndependent pins the property the e0ab1ed
+// deadlock fix rests on, deterministically: two processes spelling the same
+// two files cwd-relative from different working directories — raw spellings
+// sorting in opposite orders — must still compute the same acquisition
+// sequence. t.Chdir stands in for the second process; the real two-process
+// version is TestLockNoCrossProcessDeadlock.
+func TestCanonicalLockOrderCwdIndependent(t *testing.T) {
+	work := t.TempDir()
+	adir := filepath.Join(work, "a")
+	bdir := filepath.Join(work, "b")
+	for _, d := range []string{adir, bdir} {
+		if err := os.Mkdir(d, 0o750); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// From a: "../b/g.go" < "f.go". From b: "../a/f.go" < "g.go". Sorting
+	// the raw spellings would acquire in opposite orders.
+	t.Chdir(adir)
+	fromA, err := canonicalLockOrder([]fileSnapshot{{path: "f.go"}, {path: filepath.Join("..", "b", "g.go")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(bdir)
+	fromB, err := canonicalLockOrder([]fileSnapshot{{path: "g.go"}, {path: filepath.Join("..", "a", "f.go")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(fromA) != 2 {
+		t.Fatalf("want 2 lock paths, got %v", fromA)
+	}
+	if !slices.Equal(fromA, fromB) {
+		t.Fatalf("lock order depends on cwd spelling:\n  from a: %v\n  from b: %v", fromA, fromB)
 	}
 }
 

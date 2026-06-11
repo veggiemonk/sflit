@@ -14,13 +14,6 @@ Entry format:
 
 ---
 
-## Multi-process lock coverage (ADR-0001 safety claims)
-
-- **Kind:** deferred improvement.
-- **Context:** ADR-0001's two load-bearing claims — flock release-on-process-death (why flock beat O_EXCL lockfiles) and cross-process canonical lock ordering (the e0ab1ed cwd-relative AB-BA deadlock requires two processes with different cwds) — are tested only in-process, where both hold trivially. flock excludes per open-file-description, so goroutine tests cannot exercise either claim.
-- **Why deferred:** needs exec-based test infrastructure (re-exec the test binary or a testscript with backgrounded concurrent invocations, child killed while holding the lock). Found during test-suite review.
-- **Acceptance:** a test kills a child process holding the lock and asserts a second process acquires without manual cleanup; concurrent multi-process moves over overlapping lock sets complete without deadlock.
-
 ## Concurrent fan-out test has no contention assertion
 
 - **Kind:** deferred improvement.

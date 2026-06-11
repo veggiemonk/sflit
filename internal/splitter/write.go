@@ -38,16 +38,10 @@ type commit struct {
 // the same sidecar. Symlink aliases are not resolved
 // (filepath.EvalSymlinks fails on not-yet-existing sinks).
 func (c commit) lockAll() (release func(), err error) {
-	paths := make([]string, 0, len(c.snaps))
-	for _, s := range c.snaps {
-		p, err := filepath.Abs(s.path)
-		if err != nil {
-			return nil, fmt.Errorf("lock %s: %w", s.path, err)
-		}
-		paths = append(paths, p)
+	paths, err := canonicalLockOrder(c.snaps)
+	if err != nil {
+		return nil, err
 	}
-	sort.Strings(paths)
-	paths = slices.Compact(paths)
 	releases := make([]func() error, 0, len(paths))
 	release = func() {
 		for i := len(releases) - 1; i >= 0; i-- {
@@ -63,6 +57,24 @@ func (c commit) lockAll() (release func(), err error) {
 		releases = append(releases, unlock)
 	}
 	return release, nil
+}
+
+// canonicalLockOrder returns the lock-acquisition sequence for snaps:
+// absolute paths, sorted, deduplicated. Canonicalizing before sorting is
+// what makes the order agree across processes that spelled the same files
+// differently (cwd-relative vs absolute) — sorting the raw spellings
+// reintroduces the e0ab1ed AB-BA deadlock.
+func canonicalLockOrder(snaps []fileSnapshot) ([]string, error) {
+	paths := make([]string, 0, len(snaps))
+	for _, s := range snaps {
+		p, err := filepath.Abs(s.path)
+		if err != nil {
+			return nil, fmt.Errorf("lock %s: %w", s.path, err)
+		}
+		paths = append(paths, p)
+	}
+	sort.Strings(paths)
+	return slices.Compact(paths), nil
 }
 
 // verify re-reads every snapshot and compares against the pre-image.
