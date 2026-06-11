@@ -6,6 +6,7 @@ stdout '"move": true'
 stdout '"matched":'
 stdout '"FilterA"'
 stdout '"declarations_remaining": 1'
+stdout '"attempts": 1'
 cmp small.go expected_small.go
 
 # -json still prints errors to stderr on failure, no JSON on stdout.

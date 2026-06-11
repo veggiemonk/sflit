@@ -14,13 +14,6 @@ Entry format:
 
 ---
 
-## Concurrent fan-out test has no contention assertion
-
-- **Kind:** deferred improvement.
-- **Context:** `concurrent_test.go:19` `TestConcurrentFanOut` is the *only* test that fails when `lockAll` is removed from commit (mutation-verified), and it never asserts contention occurred — on serialized CI hardware it silently degrades to testing the sequential path. All sinks are disjoint, so ordered two-lock acquisition with overlapping pairs is never stressed under real concurrency.
-- **Why deferred:** needs a retry/conflict-observed counter seam plus a deterministic blocked-commit test (externally hold a sidecar lock, assert `writePair` blocks until release). Found during test-suite review.
-- **Acceptance:** fan-out test asserts ≥1 conflict/retry occurred; a deterministic test holds the lock externally and observes commit blocking; a concurrent same-sink scenario (fully overlapping lock sets) exists.
-
 ## writePair crash-safety branches untested
 
 - **Kind:** deferred improvement.

@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Sidecar lock files (`.<name>.sflit.lock`) are removed on release on unix;
   on windows they are left behind (best-effort platform) and are safe to
   ignore.
+- `-json` output (and the library `Result`) includes `attempts`: how many
+  pipeline attempts the run took. `1` means no commit-time conflict;
+  higher values mean concurrent writers forced re-runs — observability
+  for orchestrators fanning out parallel invocations (ADR-0001).
 
 ### Changed
 

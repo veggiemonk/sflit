@@ -67,6 +67,7 @@ func Run(cfg Config) (Result, error) {
 		var res Result
 		res, err = runOnce(cfg)
 		if !errors.Is(err, errConflict) {
+			res.Attempts = attempt + 1
 			return res, err
 		}
 		cfg.logger().Info("commit conflict, retrying", "attempt", attempt+1, "of", retries+1)
