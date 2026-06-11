@@ -26,6 +26,9 @@ exec sflit -source g.go -sink h.go -regex '^First$' -move
 cmp g.go expected_g.go
 cmp h.go expected_h.go
 
+exec gotypecheck a.go b.go
+exec gotypecheck c.go
+exec gotypecheck other/d.go
 -- a.go --
 package p
 

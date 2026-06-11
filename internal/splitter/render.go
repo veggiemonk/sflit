@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"go/ast"
+	"go/parser"
 	"go/printer"
 	"go/token"
+	"strconv"
 
+	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/imports"
 )
 
@@ -44,11 +47,56 @@ func renderFiles(plan Plan) ([]byte, []byte, error) {
 		combined = append(combined, movedBody...)
 	}
 
+	combined, err = carryNamedImports(plan.SinkPath, combined, plan.SrcFile)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	sinkBytes, err := imports.Process(plan.SinkPath, combined, nil)
 	if err != nil {
 		return nil, nil, fmt.Errorf("imports.Process sink: %w", err)
 	}
 	return srcBytes, sinkBytes, nil
+}
+
+// carryNamedImports re-adds the source's named imports to the combined sink
+// bytes before goimports runs. goimports resolves unaliased imports from the
+// identifier (and learns aliases from sibling files in the sink's directory),
+// but a named import landing in a directory with no siblings is unrecoverable
+// from the identifier alone — `f.Println` says nothing about "fmt". Unused
+// ones are pruned by the imports.Process call that follows. Blank imports are
+// excluded: goimports never prunes them, so carrying them would duplicate
+// side-effect imports into every sink. Dot imports are rejected upstream by
+// validation.
+func carryNamedImports(filename string, combined []byte, src *ast.File) ([]byte, error) {
+	type namedImport struct{ name, path string }
+	var named []namedImport
+	for _, imp := range src.Imports {
+		if imp.Name == nil || imp.Name.Name == "_" || imp.Name.Name == "." {
+			continue
+		}
+		path, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			return nil, fmt.Errorf("import path %s: %w", imp.Path.Value, err)
+		}
+		named = append(named, namedImport{imp.Name.Name, path})
+	}
+	if len(named) == 0 {
+		return combined, nil
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, filename, combined, parser.ParseComments)
+	if err != nil {
+		return nil, fmt.Errorf("parse combined sink: %w", err)
+	}
+	for _, ni := range named {
+		astutil.AddNamedImport(fset, f, ni.name, ni.path)
+	}
+	out, err := printNode(fset, f)
+	if err != nil {
+		return nil, fmt.Errorf("render sink with named imports: %w", err)
+	}
+	return out, nil
 }
 
 func printAndFormat(fset *token.FileSet, file *ast.File, path string) ([]byte, error) {

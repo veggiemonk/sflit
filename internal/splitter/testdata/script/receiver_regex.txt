@@ -4,6 +4,7 @@ exec sflit -source big.go -sink filters.go -receiver MyStruct -regex '^Filter' -
 cmp filters.go expected_filters.go
 cmp big.go expected_big.go
 
+exec gotypecheck big.go filters.go
 -- big.go --
 package p
 

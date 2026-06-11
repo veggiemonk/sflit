@@ -5,6 +5,8 @@ exec sflit -source big.go -sink sub/small.go -regex '^Filter'
 cmp sub/small.go expected_small.go
 cmp big.go expected_big.go
 
+exec gotypecheck big.go
+exec gotypecheck sub/small.go
 -- big.go --
 package p
 

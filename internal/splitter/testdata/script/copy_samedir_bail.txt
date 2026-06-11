@@ -14,6 +14,7 @@ exec sflit -source a.go -regex '^Filter$' -sink b.go -move
 cmp a.go expected_a.go
 cmp b.go expected_b.go
 
+exec gotypecheck a.go b.go
 -- a.go --
 package probe
 

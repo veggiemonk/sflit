@@ -3,6 +3,7 @@ exec sflit -source a.go -sink b.go -receiver App -move
 cmp a.go expected_src.go
 cmp b.go expected_sink.go
 
+exec gotypecheck a.go b.go
 -- a.go --
 package p
 

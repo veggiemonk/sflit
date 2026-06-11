@@ -9,6 +9,10 @@ stderr 'msg="wrote file"'
 exec sflit -source big2.go -sink sub2/small2.go -regex '^Filter'
 ! stderr 'msg='
 
+exec gotypecheck big.go
+exec gotypecheck sub/small.go
+exec gotypecheck big2.go
+exec gotypecheck sub2/small2.go
 -- big.go --
 package p
 

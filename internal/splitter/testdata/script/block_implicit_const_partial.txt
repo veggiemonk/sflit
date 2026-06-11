@@ -17,6 +17,7 @@ cmp big.go expected_big.go
 exec sflit -source big.go -sink all.go -regex '^(A|B|C)$' -move
 cmp all.go expected_all.go
 
+exec gotypecheck big.go all.go
 -- big.go --
 package p
 

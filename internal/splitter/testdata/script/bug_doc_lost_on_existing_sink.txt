@@ -17,6 +17,7 @@ exec sflit -source big.go -sink merged.go -receiver First -move
 exec sflit -source big.go -sink merged.go -receiver Second -move
 cmp merged.go expected_merged.go
 
+exec gotypecheck big.go merged.go
 -- big.go --
 package p
 

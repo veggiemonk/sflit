@@ -3,6 +3,7 @@ exec sflit -source big.go -sink my_struct.go -receiver MyStruct -move
 cmp my_struct.go expected_sink.go
 cmp big.go expected_src.go
 
+exec gotypecheck big.go my_struct.go
 -- big.go --
 package p
 

@@ -5,6 +5,7 @@ exec sflit -source big.go -sink small.go -regex '^Matched' -move
 cmp small.go expected_small.go
 cmp big.go expected_big.go
 
+exec gotypecheck big.go small.go
 -- big.go --
 package p
 
@@ -35,6 +36,7 @@ const (
 package p
 
 var MatchedVar = 10
+
 var MatchedPair = 42
 
 const MatchedConst = 1

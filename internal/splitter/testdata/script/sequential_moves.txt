@@ -12,6 +12,7 @@ cmp render.go expected_render.go
 [!GOOS:windows] ! exists .big.go.sflit.lock
 [GOOS:windows] exists .big.go.sflit.lock
 
+exec gotypecheck big.go filter.go render.go
 -- big.go --
 package mypkg
 

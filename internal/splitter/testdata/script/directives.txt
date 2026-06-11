@@ -3,6 +3,7 @@ exec sflit -source a.go -sink b.go -regex '^Foo' -move
 grep 'go:noinline' b.go
 ! grep 'go:noinline' a.go
 
+exec gotypecheck a.go b.go
 -- a.go --
 package p
 

@@ -29,6 +29,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Lock acquisition order is canonicalized to prevent deadlock between
   concurrent runs; collision keys handle parenthesized receivers.
+- A doc comment on a spec split out of a grouped `var`/`const`/`type` block
+  now prints above the keyword in the sink. Previously the keyword rendered
+  on its own line with the comment wedged between keyword and spec —
+  syntactically valid but not gofmt-stable, and the doc comment was demoted
+  to a floating comment.
+- Named imports (`f "fmt"`) now travel with moved declarations. goimports
+  cannot infer an alias from the identifier, so a split into a directory with
+  no sibling files previously wrote a sink that referenced the alias without
+  importing it and did not compile.
 
 ## [0.5.0] - 2026-06-10
 

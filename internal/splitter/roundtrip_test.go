@@ -6,6 +6,17 @@ import (
 	"testing"
 )
 
+// readBack reads a written output file, failing the test on error so a
+// missing file surfaces as itself rather than as a confusing oracle diff.
+func readBack(t *testing.T, path string) string {
+	t.Helper()
+	b, err := os.ReadFile(filepath.Clean(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
 func TestRoundTrip_MoveAndBack(t *testing.T) {
 	dir := t.TempDir()
 	a := filepath.Join(dir, "a.go")
@@ -14,23 +25,168 @@ func TestRoundTrip_MoveAndBack(t *testing.T) {
 
 import "fmt"
 
-func FilterA() { fmt.Println("a") }
+// FilterA prints a.
+func FilterA() {
+	// in-body note
+	fmt.Println("a")
+}
+
+// FilterB prints b.
 func FilterB() { fmt.Println("b") }
-func Other()   {}
+
+// Keeper stays in a.go while its Filter method travels.
+type Keeper struct{ n int }
+
+// FilterCount reports n.
+func (k Keeper) FilterCount() int { return k.n }
+
+func Other() int { return Keeper{n: 1}.FilterCount() }
 `
-	if err := os.WriteFile(a, []byte(original), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	// move FilterA,FilterB from a.go to b.go
+	writeFile(t, a, original)
+
+	// move FilterA, FilterB, Keeper.FilterCount from a.go to b.go
 	if _, err := Run(Config{Source: a, Sink: b, Regex: "^Filter", Move: true}); err != nil {
 		t.Fatal(err)
 	}
+	typeCheckDir(t, dir)
+	if err := SemEqual([]string{original}, []string{readBack(t, a), readBack(t, b)}); err != nil {
+		t.Fatalf("after move: %v", err)
+	}
+
 	// move them back from b.go to a.go
 	if _, err := Run(Config{Source: b, Sink: a, Regex: "^Filter", Move: true}); err != nil {
 		t.Fatal(err)
 	}
-	final, _ := os.ReadFile(filepath.Clean(a))
-	if err := SemEqual([]string{original}, []string{string(final)}); err != nil {
-		t.Fatalf("round-trip semantic mismatch: %v\nfinal:\n%s", err, final)
+	typeCheckDir(t, dir)
+	if err := SemEqual([]string{original}, []string{readBack(t, a), readBack(t, b)}); err != nil {
+		t.Fatalf("after move back: %v", err)
+	}
+}
+
+// A partial split of a grouped var: the moved spec leaves its group, comes
+// back as a standalone decl, and the spec-level oracle must see equality.
+func TestRoundTrip_GroupedVarPartial(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.go")
+	b := filepath.Join(dir, "b.go")
+	original := `package p
+
+var (
+	// limit caps things.
+	limit = 8
+	name  = "x" // inline note
+)
+
+func Other() int { return limit + len(name) }
+`
+	writeFile(t, a, original)
+
+	if _, err := Run(Config{Source: a, Sink: b, Regex: "^limit$", Move: true}); err != nil {
+		t.Fatal(err)
+	}
+	typeCheckDir(t, dir)
+	if err := SemEqual([]string{original}, []string{readBack(t, a), readBack(t, b)}); err != nil {
+		t.Fatalf("after move: %v", err)
+	}
+
+	if _, err := Run(Config{Source: b, Sink: a, Regex: "^limit$", Move: true}); err != nil {
+		t.Fatal(err)
+	}
+	typeCheckDir(t, dir)
+	if err := SemEqual([]string{original}, []string{readBack(t, a), readBack(t, b)}); err != nil {
+		t.Fatalf("after move back: %v", err)
+	}
+}
+
+// A moved decl that uses an aliased import: goimports cannot infer the
+// alias from the identifier, so the rendered sink must carry the import.
+func TestRun_AliasedImport_NewSink(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.go")
+	b := filepath.Join(dir, "b.go")
+	original := `package p
+
+import f "fmt"
+
+// FilterA prints a.
+func FilterA() { f.Println("a") }
+
+func Other() { f.Println("o") }
+`
+	writeFile(t, a, original)
+
+	if _, err := Run(Config{Source: a, Sink: b, Regex: "^FilterA$", Move: true}); err != nil {
+		t.Fatal(err)
+	}
+	typeCheckDir(t, dir)
+	if err := SemEqual([]string{original}, []string{readBack(t, a), readBack(t, b)}); err != nil {
+		t.Fatalf("after move: %v", err)
+	}
+}
+
+// Copy into a different directory: the sink has no sibling files, so
+// goimports cannot learn the alias from the package — the render itself
+// must carry the named import or the written sink does not compile.
+func TestRun_AliasedImport_CopyNewDir(t *testing.T) {
+	dir := t.TempDir()
+	sub := filepath.Join(dir, "sub")
+	if err := os.Mkdir(sub, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	a := filepath.Join(dir, "a.go")
+	b := filepath.Join(sub, "b.go")
+	writeFile(t, a, `package p
+
+import f "fmt"
+
+// FilterA prints a.
+func FilterA() { f.Println("a") }
+
+func Other() { f.Println("o") }
+`)
+
+	if _, err := Run(Config{Source: a, Sink: b, Regex: "^FilterA$"}); err != nil {
+		t.Fatal(err)
+	}
+	typeCheckDir(t, dir)
+	typeCheckDir(t, sub)
+	if err := SemEqual(
+		[]string{"package p\n\nimport f \"fmt\"\n\n// FilterA prints a.\nfunc FilterA() { f.Println(\"a\") }\n"},
+		[]string{readBack(t, b)},
+	); err != nil {
+		t.Fatalf("sink content: %v", err)
+	}
+}
+
+func TestRun_AliasedImport_ExistingSink(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.go")
+	b := filepath.Join(dir, "b.go")
+	srcOriginal := `package p
+
+import f "fmt"
+
+// FilterA prints a.
+func FilterA() { f.Println("a") }
+
+func Other() { f.Println("o") }
+`
+	sinkOriginal := `package p
+
+// Existing stays put.
+func Existing() {}
+`
+	writeFile(t, a, srcOriginal)
+	writeFile(t, b, sinkOriginal)
+
+	if _, err := Run(Config{Source: a, Sink: b, Regex: "^FilterA$", Move: true}); err != nil {
+		t.Fatal(err)
+	}
+	typeCheckDir(t, dir)
+	if err := SemEqual(
+		[]string{srcOriginal, sinkOriginal},
+		[]string{readBack(t, a), readBack(t, b)},
+	); err != nil {
+		t.Fatalf("after move: %v", err)
 	}
 }

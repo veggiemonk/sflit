@@ -171,7 +171,7 @@ func selectTypeSpecs(gd *ast.GenDecl, cfg Config, re *regexp.Regexp) []Match {
 	// Plan.applyMove via Origin.
 	for _, i := range matchIdx {
 		s := gd.Specs[i]
-		syn := &ast.GenDecl{Tok: gd.Tok, Specs: []ast.Spec{s}}
+		syn := syntheticGenDecl(gd, s)
 		out = append(out, Match{
 			Decl:      syn,
 			Kind:      KindTypeDecl,
@@ -254,7 +254,7 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
 			continue
 		}
 		if pm.fullyIn {
-			syn := &ast.GenDecl{Tok: gd.Tok, Specs: []ast.Spec{pm.spec}}
+			syn := syntheticGenDecl(gd, pm.spec)
 			out = append(out, Match{
 				Decl:      syn,
 				Kind:      KindValueDecl,
@@ -275,7 +275,7 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
 			if j < len(pm.spec.Values) {
 				split.Values = []ast.Expr{pm.spec.Values[j]}
 			}
-			syn := &ast.GenDecl{Tok: gd.Tok, Specs: []ast.Spec{split}}
+			syn := syntheticGenDecl(gd, split)
 			out = append(out, Match{
 				Decl:      syn,
 				Kind:      KindValueDecl,
@@ -285,6 +285,16 @@ func selectValueSpecs(gd *ast.GenDecl, re *regexp.Regexp) ([]Match, error) {
 		}
 	}
 	return out, nil
+}
+
+// syntheticGenDecl wraps one spec split out of gd into its own synthetic
+// decl. TokPos anchors the keyword immediately before the spec: go/printer
+// interleaves comment groups by position, so a zero TokPos sorts before
+// every comment in the file and a doc comment travelling with the spec
+// would print between the keyword and the spec, producing non-gofmt output
+// and demoting the doc comment to a floating comment.
+func syntheticGenDecl(gd *ast.GenDecl, s ast.Spec) *ast.GenDecl {
+	return &ast.GenDecl{Tok: gd.Tok, TokPos: s.Pos() - 1, Specs: []ast.Spec{s}}
 }
 
 func rejectUnsafePartialMultiNameValueSpec(gd *ast.GenDecl, re *regexp.Regexp) error {

@@ -17,6 +17,7 @@ exec sflit -source big.go -sink small.go -regex '^Kind' -move
 cmp big.go expected_big.go
 cmp small.go expected_small.go
 
+exec gotypecheck big.go small.go
 -- big.go --
 package p
 
