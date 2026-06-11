@@ -48,6 +48,15 @@ func TestConcurrentFanOut(t *testing.T) {
 	for i, g := range groups {
 		wg.Go(func() {
 			firstAttempt := true
+			// If this run dies before its first commit, release its barrier
+			// slot so the surviving runs fail their assertions instead of
+			// deadlocking in parseBarrier.Wait until the test timeout.
+			defer func() {
+				if firstAttempt {
+					firstAttempt = false
+					parseBarrier.Done()
+				}
+			}()
 			res, err := Run(Config{
 				Source: src,
 				Sink:   filepath.Join(dir, strings.ToLower(g)+".go"),
@@ -151,6 +160,14 @@ func TestConcurrentSameSink(t *testing.T) {
 	for i, g := range groups {
 		wg.Go(func() {
 			firstAttempt := true
+			// See TestConcurrentFanOut: a run dying pre-commit must not
+			// deadlock the barrier.
+			defer func() {
+				if firstAttempt {
+					firstAttempt = false
+					parseBarrier.Done()
+				}
+			}()
 			res, err := Run(Config{
 				Source:  src,
 				Sink:    sink,
@@ -278,5 +295,40 @@ func TestCommitBlocksOnHeldLock(t *testing.T) {
 	}
 	if _, err := os.Stat(sink); err != nil {
 		t.Fatalf("sink not written after release: %v", err)
+	}
+}
+
+// TestRunGaveUpReportsAttempts pins Result.Attempts on the exhausted-retries
+// path: a run that gave up burned retries+1 attempts, and the Result must
+// say so — the field exists for orchestrator observability, and the give-up
+// case is where it matters most. The hook mutates the source before every
+// commit, so every attempt conflicts.
+func TestRunGaveUpReportsAttempts(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "big.go")
+	if err := os.WriteFile(src, []byte("package foo\n\nfunc FilterA() int { return 0 }\n\nfunc Other() int { return 2 }\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	n := 0
+	res, err := Run(Config{
+		Source:  src,
+		Sink:    filepath.Join(dir, "filter.go"),
+		Regex:   "^Filter",
+		Move:    true,
+		Retries: 1,
+		testHookBeforeCommit: func() {
+			n++
+			content := fmt.Sprintf("package foo\n\nfunc FilterA() int { return %d }\n\nfunc Other() int { return 2 }\n", n)
+			if werr := os.WriteFile(src, []byte(content), 0o600); werr != nil {
+				t.Error(werr)
+			}
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "gave up after 2 attempts") {
+		t.Fatalf("want gave-up error after 2 attempts, got %v", err)
+	}
+	if res.Attempts != 2 {
+		t.Errorf("attempts = %d, want 2 on the gave-up result", res.Attempts)
 	}
 }

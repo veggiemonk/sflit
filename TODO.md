@@ -27,3 +27,17 @@ Entry format:
 - **Context:** `CHANGELOG.md` exists (Keep-a-Changelog, populated retroactively v0.2.1–v0.5.0 + Unreleased). The release pipeline (goreleaser) does not yet consume it or enforce that tagged releases promote the Unreleased section.
 - **Why deferred:** needs a decision on mechanism (goreleaser changelog config vs. a tag-time check that Unreleased is non-empty and gets renamed to the version).
 - **Acceptance:** tagging a release promotes the Unreleased section to that version heading, and the release notes are generated from it.
+
+## Reject implicit-name import collisions (alias vs unaliased)
+
+- **Kind:** deferred improvement (needs a decision on the heuristic).
+- **Context:** `validateImportAliases` (`internal/splitter/validate.go`) only compares *named* imports on both sides. Two adjacent holes still write or produce broken sinks: (1) sink has `import "fmt"`, source has `import fmt "other/path"` — the carried named import redeclares `fmt` and the sink does not compile; (2) source has unaliased `import "fmt"` and the sink binds alias `fmt` to a different path — the moved code's `fmt.X` silently resolves to the *wrong package* (type error at best, silent miscompile if APIs overlap), because goimports sees the ident as already satisfied. Found in the deep-review pass of `e46c38c`.
+- **Why deferred:** detecting these requires guessing the implicit package name of an unaliased import at parse level (no type info). `path.Base` is the goimports heuristic, but it false-positives when the package name differs from the path base (`go-foo` → `foo`, `yaml.v3` → `yaml`). Whether a rare false rejection is acceptable to close a wrote-non-compiling-output hole is a product call — the dot-import precedent says yes, but it should be decided, not slipped in.
+- **Acceptance:** both directions (sink-unaliased vs source-alias, source-unaliased vs sink-alias) are rejected with a message naming both paths, a red test exists for each, and the heuristic's false-positive class is documented in help/schema like the file-local stranded-refs caveat.
+
+## New sink could inherit the source's build constraints instead of rejecting
+
+- **Kind:** deferred improvement (needs a decision).
+- **Context:** `validateBuildConstraints` rejects moving from a build-constrained source into a *new* sink ("new sink without matching constraints"), pinned by `TestValidate_NewSinkRejectsBuildConstrainedSource`. But sflit writes the new sink from scratch — it could copy the source's `//go:build` lines into it and proceed, which is almost always what the user wants when splitting a `_linux.go` file.
+- **Why deferred:** behavior change to a released rejection; interacts with filename-implied constraints (`_linux.go`, `_test.go` suffixes) which the constraint-line copy would not cover. Surfaced while pinning the branch in the test-improvement batch; the pin records current behavior, not desired behavior.
+- **Acceptance:** a decision is recorded (keep rejecting vs inherit); if inherit: new sinks receive the source's constraint lines, the rejection branch only fires for existing sinks, help/schema/CHANGELOG updated, golden refreshed.

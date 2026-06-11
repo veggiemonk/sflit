@@ -369,9 +369,10 @@ func validateNoStrandedRefs(plan Plan) error {
 	refs := func(n ast.Node, travels bool) []string {
 		var out []string
 		seen := make(map[string]bool)
+		skip := fieldNameKeys(n)
 		ast.Inspect(n, func(node ast.Node) bool {
 			id, ok := node.(*ast.Ident)
-			if !ok {
+			if !ok || skip[id] {
 				return true
 			}
 			if isTop, t := classify(id); isTop && t == travels && !seen[id.Name] {
@@ -452,6 +453,88 @@ func validateNoStrandedRefs(plan Plan) error {
 		}
 	}
 	return nil
+}
+
+// fieldNameKeys returns the bare-ident composite-literal keys under n that
+// are struct field names, not expressions: the parser resolves T{helper: 1}
+// keys against file scope (go.dev/issue/45160), so without skipping them the
+// reference walk sees phantom references to same-file top-level names. Keys
+// of map and array literals ARE expressions and are not collected. A
+// literal's kind is judged syntactically, chasing file-local type
+// declarations; types this file cannot resolve (imported, sibling-file) are
+// treated as structs — phantom rejections are the worse failure here, and
+// an unjudgeable map key joins the documented file-local blind spots.
+func fieldNameKeys(n ast.Node) map[*ast.Ident]bool {
+	skip := make(map[*ast.Ident]bool)
+	ast.Inspect(n, func(node ast.Node) bool {
+		// Nil-typed nested literals are reached through their typed
+		// ancestor, which knows their element type.
+		if lit, ok := node.(*ast.CompositeLit); ok && lit.Type != nil {
+			markFieldNameKeys(lit, lit.Type, skip)
+		}
+		return true
+	})
+	return skip
+}
+
+// markFieldNameKeys records lit's field-name keys into skip, recursing into
+// nil-typed (elided) nested literals with the key/element type inherited
+// from typ.
+func markFieldNameKeys(lit *ast.CompositeLit, typ ast.Expr, skip map[*ast.Ident]bool) {
+	var keyType, elemType ast.Expr
+	structLike := false
+	switch t := underlyingLocalType(typ).(type) {
+	case *ast.MapType:
+		keyType, elemType = t.Key, t.Value
+	case *ast.ArrayType:
+		elemType = t.Elt
+	default:
+		structLike = true
+	}
+	for _, el := range lit.Elts {
+		val := el
+		if kv, ok := el.(*ast.KeyValueExpr); ok {
+			val = kv.Value
+			switch {
+			case structLike:
+				if id, ok := kv.Key.(*ast.Ident); ok {
+					skip[id] = true
+				}
+			default:
+				if klit, ok := kv.Key.(*ast.CompositeLit); ok && klit.Type == nil {
+					markFieldNameKeys(klit, keyType, skip)
+				}
+			}
+		}
+		if vlit, ok := val.(*ast.CompositeLit); ok && vlit.Type == nil {
+			markFieldNameKeys(vlit, elemType, skip)
+		}
+	}
+}
+
+// underlyingLocalType chases parentheses and type declarations resolvable in
+// this file (including aliases) to the syntactic underlying type; anything
+// it cannot resolve file-locally is returned as-is. Bounded because parser
+// objects can be cyclic on invalid input.
+func underlyingLocalType(typ ast.Expr) ast.Expr {
+	for range 64 {
+		switch t := typ.(type) {
+		case *ast.ParenExpr:
+			typ = t.X
+		case *ast.Ident:
+			if t.Obj == nil {
+				return typ
+			}
+			ts, ok := t.Obj.Decl.(*ast.TypeSpec)
+			if !ok {
+				return typ
+			}
+			typ = ts.Type
+		default:
+			return typ
+		}
+	}
+	return typ
 }
 
 func validateBuildConstraints(plan Plan) error {

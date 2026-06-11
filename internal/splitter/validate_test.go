@@ -148,6 +148,56 @@ func TestValidate_StrandedRefs(t *testing.T) {
 			move:    true,
 			wantErr: "base",
 		},
+		// The parser resolves composite-literal keys against file scope even
+		// when they are struct field names (go.dev/issue/45160). Field keys
+		// must not count as references…
+		{
+			name:  "struct literal field key is not a reference",
+			src:   "package p\n\nfunc helper() int { return 1 }\n\ntype T struct{ helper int }\n\nfunc Foo() T { return T{helper: 1} }\n",
+			regex: "^(Foo|T)$",
+			sink:  crossDirSink,
+			move:  true,
+		},
+		{
+			name:  "nested elided struct literal key is not a reference",
+			src:   "package p\n\nfunc helper() int { return 1 }\n\ntype T struct{ helper int }\n\nfunc Foo() []T { return []T{{helper: 1}} }\n",
+			regex: "^(Foo|T)$",
+			sink:  crossDirSink,
+			move:  true,
+		},
+		{
+			name:  "imported-type struct literal key is not a reference",
+			src:   "package p\n\nimport \"example.com/q\"\n\nfunc helper() int { return 1 }\n\nfunc Foo() q.T { return q.T{helper: 1} }\n",
+			regex: "^Foo$",
+			sink:  crossDirSink,
+			move:  true,
+		},
+		// …while map keys and array indices are expressions and must keep
+		// counting as references.
+		{
+			name:    "map literal key referencing a staying const is a reference",
+			src:     "package p\n\nconst key = \"k\"\n\nfunc Foo() map[string]int { return map[string]int{key: 1} }\n",
+			regex:   "^Foo$",
+			sink:    crossDirSink,
+			move:    true,
+			wantErr: "key",
+		},
+		{
+			name:    "array index key referencing a staying const is a reference",
+			src:     "package p\n\nconst idx = 0\n\nfunc Foo() [4]int { return [4]int{idx: 1} }\n",
+			regex:   "^Foo$",
+			sink:    crossDirSink,
+			move:    true,
+			wantErr: "idx",
+		},
+		{
+			name:    "file-local named map type key is a reference",
+			src:     "package p\n\nconst key = \"k\"\n\ntype M map[string]int\n\nfunc Foo() M { return M{key: 1} }\n",
+			regex:   "^(Foo|M)$",
+			sink:    crossDirSink,
+			move:    true,
+			wantErr: "key",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

@@ -72,7 +72,7 @@ func Run(cfg Config) (Result, error) {
 		}
 		cfg.logger().Info("commit conflict, retrying", "attempt", attempt+1, "of", retries+1)
 	}
-	return Result{}, fmt.Errorf("gave up after %d attempts: %w", retries+1, err)
+	return Result{Attempts: retries + 1}, fmt.Errorf("gave up after %d attempts: %w", retries+1, err)
 }
 
 // runOnce executes one optimistic attempt: parse, select, plan, render,
