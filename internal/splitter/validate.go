@@ -29,18 +29,27 @@ func declKeys(d ast.Decl) []string {
 	case *ast.GenDecl:
 		var keys []string
 		for _, s := range x.Specs {
-			switch ss := s.(type) {
-			case *ast.TypeSpec:
-				keys = append(keys, "type "+ss.Name.Name)
-			case *ast.ValueSpec:
-				kind := "var"
-				if x.Tok == token.CONST {
-					kind = "const"
-				}
-				for _, n := range ss.Names {
-					keys = append(keys, kind+" "+n.Name)
-				}
-			}
+			keys = append(keys, specKeys(x.Tok, s)...)
+		}
+		return keys
+	}
+	return nil
+}
+
+// specKeys returns the declKeys-style name keys for one spec of a GenDecl
+// with the given keyword token.
+func specKeys(tok token.Token, s ast.Spec) []string {
+	switch ss := s.(type) {
+	case *ast.TypeSpec:
+		return []string{"type " + ss.Name.Name}
+	case *ast.ValueSpec:
+		kind := "var"
+		if tok == token.CONST {
+			kind = "const"
+		}
+		keys := make([]string, 0, len(ss.Names))
+		for _, n := range ss.Names {
+			keys = append(keys, kind+" "+n.Name)
 		}
 		return keys
 	}
