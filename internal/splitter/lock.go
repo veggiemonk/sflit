@@ -29,6 +29,12 @@ import (
 	"sync"
 )
 
+// testHookBetweenUnlinkAndFunlock runs in release between the sidecar
+// unlink and the flock release. Tests use it to pin that order: the unlink
+// must happen while the lock is still held, or the two-winners race the
+// acquire-side recheck closes is reopened. No-op outside tests.
+var testHookBetweenUnlinkAndFunlock = func() {}
+
 // lockPath returns the sidecar lockfile path for target:
 // dir/name.go -> dir/.name.go.sflit.lock.
 func lockPath(target string) string {
@@ -71,6 +77,7 @@ func acquireFileLock(target string) (release func() error, err error) {
 		return func() (err error) {
 			once.Do(func() {
 				removeLockFile(path) // must happen while the lock is still held
+				testHookBetweenUnlinkAndFunlock()
 				if err = funlock(f); err != nil {
 					_ = f.Close()
 					return

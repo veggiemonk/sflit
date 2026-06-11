@@ -14,13 +14,6 @@ Entry format:
 
 ---
 
-## Lock release-order invariant has no test seam
-
-- **Kind:** deferred improvement.
-- **Context:** `lock.go:71-79` — sidecar unlink must happen *while the flock is still held*; swapping unlink/funlock reopens the two-winners ABA race the acquire-side recheck (`lockfileCurrent`) exists to close. Mutation testing (2026-06-10 review) showed the swapped order survives 5/5 full-suite `-race` runs — the invariant exists only as a comment.
-- **Why deferred:** needs a deterministic test seam (hook between unlink and funlock, or retry-counter instrumentation in `lockfileCurrent`) — design work, not a quick assert. Found during test-suite review; out of scope of the structural-oracle fix.
-- **Acceptance:** a test fails when the release order in `releaseFileLock` is swapped; `lockfileCurrent` branches (ErrNotExist, recreated-inode, same-inode) have deterministic unit tests; double-`release()` idempotency is pinned.
-
 ## Multi-process lock coverage (ADR-0001 safety claims)
 
 - **Kind:** deferred improvement.

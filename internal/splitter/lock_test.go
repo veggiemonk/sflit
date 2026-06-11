@@ -48,6 +48,38 @@ func TestLockAcquireReleaseReacquire(t *testing.T) {
 	}
 }
 
+// TestLockReleaseIdempotent pins the sync.Once guard on release: a second
+// call must be a no-op returning nil — in particular it must NOT run
+// removeLockFile again, which would unlink the *next* holder's sidecar
+// without holding the lock and reopen the two-winners race.
+func TestLockReleaseIdempotent(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "a.go")
+	release1, err := acquireFileLock(target)
+	if err != nil {
+		t.Fatalf("acquire 1: %v", err)
+	}
+	if err := release1(); err != nil {
+		t.Fatalf("release 1: %v", err)
+	}
+
+	// A second holder now owns a fresh sidecar.
+	release2, err := acquireFileLock(target)
+	if err != nil {
+		t.Fatalf("acquire 2: %v", err)
+	}
+	defer release2() //nolint:errcheck // re-released below
+
+	if err := release1(); err != nil {
+		t.Fatalf("double release: got %v, want nil no-op", err)
+	}
+	if _, err := os.Stat(lockPath(target)); err != nil {
+		t.Fatalf("double release unlinked the current holder's sidecar: stat err = %v", err)
+	}
+	if err := release2(); err != nil {
+		t.Fatalf("release 2: %v", err)
+	}
+}
+
 // TestLockUnlinkNoTwoWinners regresses the two-winners race: release
 // unlinks the sidecar, so a waiter granted the lock on the now-dead inode
 // must detect it and retry instead of proceeding while a third acquirer
