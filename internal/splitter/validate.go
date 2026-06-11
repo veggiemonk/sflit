@@ -512,14 +512,22 @@ func markFieldNameKeys(lit *ast.CompositeLit, typ ast.Expr, skip map[*ast.Ident]
 	}
 }
 
-// underlyingLocalType chases parentheses and type declarations resolvable in
-// this file (including aliases) to the syntactic underlying type; anything
-// it cannot resolve file-locally is returned as-is. Bounded because parser
-// objects can be cyclic on invalid input.
+// underlyingLocalType chases parentheses, generic instantiations, pointers,
+// and type declarations resolvable in this file (including aliases) to the
+// syntactic underlying type; anything it cannot resolve file-locally is
+// returned as-is. Pointers occur only as inherited element types of elided
+// literals ([]*M{{…}}); a spelled literal type is never a pointer. Bounded
+// because parser objects can be cyclic on invalid input.
 func underlyingLocalType(typ ast.Expr) ast.Expr {
 	for range 64 {
 		switch t := typ.(type) {
 		case *ast.ParenExpr:
+			typ = t.X
+		case *ast.StarExpr:
+			typ = t.X
+		case *ast.IndexExpr: // M[T]
+			typ = t.X
+		case *ast.IndexListExpr: // M[T, U]
 			typ = t.X
 		case *ast.Ident:
 			if t.Obj == nil {

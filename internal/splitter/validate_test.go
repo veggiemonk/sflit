@@ -198,6 +198,29 @@ func TestValidate_StrandedRefs(t *testing.T) {
 			move:    true,
 			wantErr: "key",
 		},
+		{
+			name:    "instantiated generic local map type key is a reference",
+			src:     "package p\n\nconst key = \"k\"\n\ntype M[K comparable, V any] map[K]V\n\nfunc Foo() M[string, int] { return M[string, int]{key: 1} }\n",
+			regex:   "^(Foo|M)$",
+			sink:    crossDirSink,
+			move:    true,
+			wantErr: "key",
+		},
+		{
+			name:    "elided pointer-to-map element key is a reference",
+			src:     "package p\n\nconst key = \"k\"\n\ntype M map[string]int\n\nfunc Foo() []*M { return []*M{{key: 1}} }\n",
+			regex:   "^(Foo|M)$",
+			sink:    crossDirSink,
+			move:    true,
+			wantErr: "key",
+		},
+		{
+			name:  "instantiated generic struct literal key is not a reference",
+			src:   "package p\n\nfunc helper() int { return 1 }\n\ntype S[T any] struct{ helper T }\n\nfunc Foo() S[int] { return S[int]{helper: 1} }\n",
+			regex: "^(Foo|S)$",
+			sink:  crossDirSink,
+			move:  true,
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
