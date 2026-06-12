@@ -1,0 +1,35 @@
+# Back-to-back moves on the same source: the second invocation parses the
+# result of the first (fresh hashes, no conflict) and both succeed. Every
+# declaration ends up in exactly one file (ADR-0001 sequential case).
+exec sflit -source big.go -regex '^Filter' -sink filter.go -move
+exec sflit -source big.go -regex '^Render' -sink render.go -move
+cmp big.go expected_big.go
+cmp filter.go expected_filter.go
+cmp render.go expected_render.go
+
+# Sidecar lock files are removed on release; on windows (best-effort
+# platform) they are left behind.
+[!GOOS:windows] ! exists .big.go.sflit.lock
+[GOOS:windows] exists .big.go.sflit.lock
+
+exec gotypecheck big.go filter.go render.go
+-- big.go --
+package mypkg
+
+func FilterA() int { return 1 }
+
+func RenderA() int { return 2 }
+
+func Keep() int { return 3 }
+-- expected_big.go --
+package mypkg
+
+func Keep() int { return 3 }
+-- expected_filter.go --
+package mypkg
+
+func FilterA() int { return 1 }
+-- expected_render.go --
+package mypkg
+
+func RenderA() int { return 2 }

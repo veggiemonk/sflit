@@ -1,0 +1,28 @@
+# Copy out of a read-only source tree (Go module cache, vendored checkout).
+# Copy never writes the source, so it must not O_CREATE a sidecar lock next
+# to it — that fails EACCES in a 0555 directory. The source pre-image is
+# still verified lock-free at commit (ADR-0001 Amendment 2).
+[GOOS:windows] skip 'read-only directory bits do not block file creation on windows'
+[root] skip 'root creates through permission bits'
+chmod 0555 ro
+exec sflit -source ro/big.go -sink sub/small.go -regex '^Filter'
+cmp sub/small.go expected_small.go
+cmp ro/big.go expected_big.go
+
+exec gotypecheck ro/big.go
+exec gotypecheck sub/small.go
+chmod 0755 ro
+-- ro/big.go --
+package p
+
+func FilterA() int { return 1 }
+func Other() int   { return 2 }
+-- expected_big.go --
+package p
+
+func FilterA() int { return 1 }
+func Other() int   { return 2 }
+-- expected_small.go --
+package p
+
+func FilterA() int { return 1 }

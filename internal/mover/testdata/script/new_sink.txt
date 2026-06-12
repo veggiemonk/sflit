@@ -1,0 +1,17 @@
+# Sink file does not exist beforehand; tool creates it (and its directory)
+# with matching package. Copy targets another directory; same-directory
+# splits use -move.
+exec sflit -source a.go -sink sub/b.go -regex '^Foo'
+exists sub/b.go
+cmp sub/b.go expected_b.go
+
+exec gotypecheck a.go
+exec gotypecheck sub/b.go
+-- a.go --
+package mypkg
+
+func Foo() {}
+-- expected_b.go --
+package mypkg
+
+func Foo() {}

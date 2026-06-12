@@ -1,0 +1,35 @@
+# Splitting init functions is rejected: moving can change package
+# initialization order, and copying duplicates init (Go allows multiple
+# init funcs, so the package compiles but runs init twice).
+
+! exec sflit -source big.go -sink small.go -regex '^init$' -move
+stderr 'cannot move or copy init function'
+cmp big.go expected_big.go
+! exists small.go
+
+# Copy mode (no -move) is rejected too.
+! exec sflit -source big.go -sink copy.go -regex '^init$'
+stderr 'cannot move or copy init function'
+cmp big.go expected_big.go
+! exists copy.go
+
+-- big.go --
+package p
+
+var Seen []string
+
+func init() {
+	Seen = append(Seen, "big")
+}
+
+func Keep() {}
+-- expected_big.go --
+package p
+
+var Seen []string
+
+func init() {
+	Seen = append(Seen, "big")
+}
+
+func Keep() {}

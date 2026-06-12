@@ -7,7 +7,7 @@ LDFLAGS := -s -w
 
 .PHONY: check build install test lint vet vuln fix clean help
 
-check: lint vuln test build ## Run lint, vuln, test, build
+check: lint vuln test build doc ## Run lint, vuln, test, build and doc
 
 build: ## Build the binary
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BINARY) .
@@ -44,7 +44,7 @@ clean: ## Remove build artifacts
 
 doc: ## update README.md
 	go run . --help > TOOL.md 2>&1
-	embedmd -w README.md
+	go tool embedmd -w README.md
 	rm -f TOOL.md
 
 help: ## Show this help

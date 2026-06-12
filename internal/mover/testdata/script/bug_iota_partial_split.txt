@@ -1,0 +1,40 @@
+# Partial regex matches across an `iota` const block are rejected.
+# Splitting only part of an iota sequence is surprising even if values are
+# materialised, so users must select the whole block or refactor it manually.
+
+! exec sflit -source big.go -sink small.go -regex '^Kind(A|B)$' -move
+stderr 'cannot narrow iota const block'
+cmp big.go expected_big.go
+! exists small.go
+
+# Copy mode (no -move) is rejected too: a copied implicit spec would render
+# as `const KindB` — invalid Go — in the sink.
+! exec sflit -source big.go -sink copy.go -regex '^KindB$'
+stderr 'cannot narrow iota const block'
+cmp big.go expected_big.go
+! exists copy.go
+
+-- big.go --
+package p
+
+type Kind int
+
+const (
+	KindUnknown Kind = iota
+	KindA
+	KindB
+	KindC
+	KindD
+)
+-- expected_big.go --
+package p
+
+type Kind int
+
+const (
+	KindUnknown Kind = iota
+	KindA
+	KindB
+	KindC
+	KindD
+)

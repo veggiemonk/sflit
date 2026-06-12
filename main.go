@@ -3,9 +3,9 @@ package main
 import (
 	"os"
 
-	"github.com/veggiemonk/sflit/internal/splitter"
+	"github.com/veggiemonk/sflit/internal/mover"
 )
 
 func main() {
-	os.Exit(splitter.RunCLI(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+	os.Exit(mover.RunCLI(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
 }

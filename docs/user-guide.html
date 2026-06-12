@@ -1,0 +1,860 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>sflit — User Guide: Splitting a Huge Go File</title>
+<style>
+  :root {
+    --bg: #0d1117;
+    --bg-soft: #161b22;
+    --bg-card: #1c2128;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-dim: #8b949e;
+    --accent: #58a6ff;
+    --accent2: #7ee787;
+    --accent3: #d2a8ff;
+    --warn: #f0883e;
+    --danger: #ff7b72;
+    --mono: "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    line-height: 1.65;
+    overflow-x: hidden;
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  code {
+    font-family: var(--mono);
+    background: var(--bg-soft);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 0.1em 0.4em;
+    font-size: 0.88em;
+    color: var(--accent2);
+  }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+
+  /* ============ HERO ============ */
+  header {
+    padding: 72px 0 48px;
+    text-align: center;
+    background:
+      radial-gradient(ellipse 60% 50% at 50% -10%, rgba(88,166,255,0.15), transparent),
+      var(--bg);
+  }
+  header h1 {
+    font-size: clamp(2rem, 5vw, 3.2rem);
+    letter-spacing: -0.02em;
+    margin-bottom: 12px;
+  }
+  header h1 .brand { color: var(--accent); font-family: var(--mono); }
+  header p.tagline {
+    color: var(--text-dim);
+    font-size: 1.15rem;
+    max-width: 640px;
+    margin: 0 auto 8px;
+  }
+  header p.sub {
+    color: var(--text-dim);
+    font-size: 0.95rem;
+    max-width: 600px;
+    margin: 0 auto;
+  }
+
+  /* ============ HERO SPLIT ANIMATION (canvas, loops) ============ */
+  .split-stage {
+    margin: 48px auto 0;
+    max-width: 860px;
+    padding: 0 16px;
+  }
+  .split-stage canvas {
+    display: block;
+    width: 100%;
+    aspect-ratio: 860 / 360;
+    height: auto;
+  }
+
+  /* ============ SECTIONS ============ */
+  section { padding: 56px 0; border-top: 1px solid var(--border); }
+  section h2 {
+    font-size: 1.7rem;
+    margin-bottom: 6px;
+    letter-spacing: -0.01em;
+  }
+  section h2 .stepnum {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px; height: 34px;
+    border-radius: 50%;
+    background: rgba(88,166,255,0.15);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-size: 1rem;
+    margin-right: 12px;
+    vertical-align: 3px;
+  }
+  section > .wrap > p.lead { color: var(--text-dim); margin-bottom: 24px; max-width: 720px; }
+  section p { margin-bottom: 14px; }
+
+  /* scroll reveal — hidden state only applies when JS has run (html.js) */
+  .reveal { transition: opacity 0.7s ease, transform 0.7s ease; }
+  .js .reveal { opacity: 0; transform: translateY(26px); }
+  .js .reveal.shown { opacity: 1; transform: translateY(0); }
+
+  /* ============ TERMINAL ============ */
+  .terminal {
+    background: #0a0d12;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    margin: 20px 0;
+    box-shadow: 0 10px 36px rgba(0,0,0,0.4);
+  }
+  .terminal .bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 14px;
+    background: var(--bg-soft);
+    border-bottom: 1px solid var(--border);
+  }
+  .terminal .dot { width: 11px; height: 11px; border-radius: 50%; }
+  .dot.r { background: #ff5f57; } .dot.y { background: #febc2e; } .dot.g { background: #28c840; }
+  .terminal .bar .title { font-family: var(--mono); font-size: 0.75rem; color: var(--text-dim); margin-left: 8px; }
+  .terminal pre {
+    padding: 16px 18px;
+    font-family: var(--mono);
+    font-size: 0.82rem;
+    line-height: 1.7;
+    overflow-x: auto;
+    color: var(--text);
+    white-space: pre;
+  }
+  .terminal .prompt { color: var(--accent2); }
+  .terminal .flag { color: var(--accent); }
+  .terminal .str { color: var(--accent3); }
+  .terminal .out { color: var(--text-dim); }
+  .terminal .ok { color: var(--accent2); }
+  .terminal .err { color: var(--danger); }
+
+  /* typed terminal */
+  .typed-cursor {
+    display: inline-block;
+    width: 8px; height: 1em;
+    background: var(--accent2);
+    vertical-align: -2px;
+    animation: blink 1s step-end infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* ============ CARDS ============ */
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 16px;
+    margin: 24px 0;
+  }
+  .card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+    transition: transform 0.25s ease, border-color 0.25s ease;
+  }
+  .card:hover { transform: translateY(-3px); border-color: var(--accent); }
+  .card h3 { font-size: 1.02rem; margin-bottom: 8px; }
+  .card h3 .ico { margin-right: 8px; }
+  .card p { color: var(--text-dim); font-size: 0.92rem; margin: 0; }
+  .card code { font-size: 0.8rem; }
+
+  /* ============ FILE-MAP DIAGRAM ============ */
+  .filemap {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+    margin: 24px 0;
+  }
+  .filemap .f {
+    font-family: var(--mono);
+    font-size: 0.78rem;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--bg-card);
+    color: var(--text);
+    transition: opacity 0.45s ease, transform 0.45s ease;
+  }
+  .js .filemap .f { opacity: 0; transform: scale(0.85); }
+  .filemap .f small { display: block; color: var(--text-dim); font-size: 0.68rem; margin-top: 2px; font-family: var(--sans); }
+  .filemap.shown .f { opacity: 1; transform: scale(1); }
+  .filemap .f:nth-child(1)  { transition-delay: 0.05s; border-left: 3px solid var(--accent); }
+  .filemap .f:nth-child(2)  { transition-delay: 0.12s; border-left: 3px solid var(--accent); }
+  .filemap .f:nth-child(3)  { transition-delay: 0.19s; border-left: 3px solid var(--accent2); }
+  .filemap .f:nth-child(4)  { transition-delay: 0.26s; border-left: 3px solid var(--accent2); }
+  .filemap .f:nth-child(5)  { transition-delay: 0.33s; border-left: 3px solid var(--accent3); }
+  .filemap .f:nth-child(6)  { transition-delay: 0.40s; border-left: 3px solid var(--accent3); }
+  .filemap .f:nth-child(7)  { transition-delay: 0.47s; border-left: 3px solid var(--warn); }
+  .filemap .f:nth-child(8)  { transition-delay: 0.54s; border-left: 3px solid var(--warn); }
+  .filemap .f:nth-child(9)  { transition-delay: 0.61s; border-left: 3px solid var(--danger); }
+  .filemap .f:nth-child(10) { transition-delay: 0.68s; border-left: 3px solid var(--danger); }
+  .filemap .f:nth-child(11) { transition-delay: 0.75s; border-left: 3px solid var(--text-dim); }
+
+  /* ============ REGEX DEMO ============ */
+  .regex-demo {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+    margin: 20px 0;
+    font-family: var(--mono);
+    font-size: 0.85rem;
+  }
+  .regex-demo .pattern { color: var(--accent3); margin-bottom: 14px; font-size: 0.95rem; }
+  .regex-demo .decl { padding: 3px 0; color: var(--text-dim); transition: color 0.4s, background 0.4s; border-radius: 4px; }
+  .regex-demo.shown .decl.hit {
+    color: var(--accent2);
+    animation: hit-flash 0.6s ease forwards;
+  }
+  .regex-demo.shown .decl.hit:nth-of-type(2) { animation-delay: 0.3s; }
+  .regex-demo.shown .decl.hit:nth-of-type(4) { animation-delay: 0.6s; }
+  .regex-demo.shown .decl.hit:nth-of-type(6) { animation-delay: 0.9s; }
+  @keyframes hit-flash {
+    0% { background: rgba(126,231,135,0); }
+    40% { background: rgba(126,231,135,0.18); }
+    100% { background: rgba(126,231,135,0.07); color: var(--accent2); }
+  }
+  .regex-demo .decl .tag {
+    float: right;
+    font-size: 0.68rem;
+    color: var(--text-dim);
+  }
+  .regex-demo.shown .decl.hit .tag { color: var(--accent2); }
+  .regex-demo.shown .decl.hit .tag::after { content: " → keys.go"; }
+  .regex-demo.shown .decl:not(.hit) .tag::after { content: " stays"; }
+  /* no-JS fallback: show the end state of the match animation */
+  html:not(.js) .regex-demo .decl.hit { color: var(--accent2); background: rgba(126,231,135,0.07); }
+  html:not(.js) .regex-demo .decl.hit .tag { color: var(--accent2); }
+  html:not(.js) .regex-demo .decl.hit .tag::after { content: " → keys.go"; }
+  html:not(.js) .regex-demo .decl:not(.hit) .tag::after { content: " stays"; }
+
+  /* ============ GUARDS ============ */
+  .guard {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--danger);
+    border-radius: 8px;
+    padding: 14px 18px;
+    margin-bottom: 12px;
+  }
+  .guard .sign { font-size: 1.2rem; line-height: 1.4; }
+  .guard p { margin: 0; font-size: 0.92rem; color: var(--text-dim); }
+  .guard p strong { color: var(--text); }
+
+  .tip {
+    border-left: 3px solid var(--accent2);
+    background: rgba(126,231,135,0.06);
+    border-radius: 0 8px 8px 0;
+    padding: 12px 18px;
+    margin: 18px 0;
+    font-size: 0.94rem;
+  }
+  .tip strong { color: var(--accent2); }
+
+  /* ============ RESULT TABLE ============ */
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; font-size: 0.92rem; }
+  th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  th { color: var(--text-dim); font-weight: 600; font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.04em; }
+  td code { white-space: nowrap; }
+  .shrink { color: var(--accent2); font-weight: 600; }
+
+  /* progress bar comparison */
+  .sizebar { display: flex; align-items: center; gap: 12px; margin: 8px 0 18px; }
+  .sizebar .label { font-family: var(--mono); font-size: 0.78rem; width: 110px; color: var(--text-dim); flex-shrink: 0; }
+  .sizebar .track { flex: 1; height: 16px; background: var(--bg-soft); border-radius: 8px; overflow: hidden; }
+  .sizebar .fill {
+    height: 100%;
+    border-radius: 8px;
+    transition: width 1.4s cubic-bezier(0.2, 0.8, 0.25, 1);
+  }
+  .sizebar .num { font-family: var(--mono); font-size: 0.78rem; width: 80px; color: var(--text-dim); }
+  .fill.before { width: 100%; background: linear-gradient(90deg, var(--danger), var(--warn)); }
+  .fill.after  { width: 11.7%; background: var(--accent2); }
+  .js .sizebars:not(.shown) .fill { width: 0; }
+
+  footer {
+    border-top: 1px solid var(--border);
+    padding: 36px 0 48px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 0.88rem;
+  }
+
+  /* nav */
+  nav.toc {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: rgba(13,17,23,0.88);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 0;
+  }
+  nav.toc .wrap { display: flex; gap: 22px; flex-wrap: wrap; font-size: 0.85rem; }
+  nav.toc a { color: var(--text-dim); }
+  nav.toc a:hover { color: var(--accent); text-decoration: none; }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* iteration-count 1 is load-bearing: a 0.01ms *infinite* animation
+       restarts every frame and strobes — the opposite of reduced motion. */
+    *, *::before, *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+    html { scroll-behavior: auto; }
+  }
+</style>
+</head>
+<body>
+<script>document.documentElement.classList.add('js');</script>
+
+<header>
+  <div class="wrap">
+    <h1><span class="brand">sflit</span> — split a huge Go file, safely</h1>
+    <p class="tagline">Move Go declarations between files through the AST — and refuse any operation that could change what the program means.</p>
+    <p class="sub">This guide walks the main use case end to end: one 1208-line file becomes 11 focused files, with the build green after every step.</p>
+  </div>
+
+  <div class="split-stage">
+    <canvas id="heroCanvas" role="img"
+      aria-label="Looping animation: sflit -move splits app.go (1208 lines) into keys.go, update.go, view.go and stream.go">
+      app.go is split by sflit -move into keys.go, update.go, view.go and stream.go.
+    </canvas>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="wrap">
+    <a href="#install">Install</a>
+    <a href="#why">Why split</a>
+    <a href="#step1">1 · Design</a>
+    <a href="#step2">2 · Methods</a>
+    <a href="#step3">3 · Types</a>
+    <a href="#step4">4 · Funcs &amp; vars</a>
+    <a href="#step5">5 · Sweeps</a>
+    <a href="#step6">6 · Tests</a>
+    <a href="#step7">7 · Undo</a>
+    <a href="#guards">Guards</a>
+    <a href="#result">Result</a>
+  </div>
+</nav>
+
+<section id="install">
+  <div class="wrap reveal">
+    <h2>Install</h2>
+    <p class="lead">A single self-contained binary. Import management (<code>goimports</code>) is compiled in — nothing else to install.</p>
+    <div class="terminal">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">install</span></div>
+      <pre><span class="prompt">$</span> go install github.com/veggiemonk/sflit@latest
+<span class="prompt">$</span> sflit -h</pre>
+    </div>
+    <p>The shape of every invocation is the same: pick declarations out of a <strong>source</strong>, write them into a <strong>sink</strong>.</p>
+    <div class="terminal">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">anatomy of a move</span></div>
+      <pre><span class="prompt">$</span> sflit <span class="flag">-source</span> big.go <span class="flag">-regex</span> <span class="str">'^Filter'</span> <span class="flag">-sink</span> filter.go <span class="flag">-move</span>
+        <span class="out">└── where from   └── what to pick     └── where to    └── delete from
+                                              (created if      source after
+                                               absent)         writing</span></pre>
+    </div>
+    <p>Without <code>-move</code>, sflit <em>copies</em>. For splitting one file inside a package, you always want <code>-move</code> — a same-directory copy would duplicate declarations and is rejected outright.</p>
+  </div>
+</section>
+
+<section id="why">
+  <div class="wrap reveal">
+    <h2>Why split a huge file at all?</h2>
+    <p class="lead">File boundaries don't matter to the Go compiler. They matter enormously to everyone — and every agent — editing the code.</p>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="ico">🤖</span>Agent-efficient codebases</h3>
+        <p>After a split, an agent reads only the file that matters. Small files make string-matching edits reliable, and the filenames become a map of the package.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">🔀</span>Parallel editing without contention</h3>
+        <p>A 5000-line file is a serialization point. After a split, work on disjoint features touches disjoint files — no merge conflicts, no stomped edits.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">✅</span>Reviewable pure-move commits</h3>
+        <p>Every move is re-parsed and reprinted through <code>gofmt</code> with imports updated — verifiably behavior-free. The reviewer checks the partition, not the code.</p>
+      </div>
+      <div class="card">
+        <h3><span class="ico">↩️</span>Reversible by construction</h3>
+        <p>A move that turned out wrong is fixed by the same move with source and sink swapped. No history, no special undo — just another move.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="step1">
+  <div class="wrap reveal">
+    <h2><span class="stepnum">1</span>Design the partition first</h2>
+    <p class="lead">The hard part is not running sflit — it is deciding which declarations belong together. Read the file and group declarations by <strong>what they own</strong>, not by kind.</p>
+    <p>In the worked example, a 1208-line <code>app.go</code> (the heart of a Bubble Tea TUI) had natural seams along lifecycle stages and features. Name each sink after what it owns — after the split, the filenames <em>are</em> the map of the package:</p>
+
+    <div class="filemap reveal-map" id="filemap">
+      <div class="f">new.go<small>construction &amp; defaults</small></div>
+      <div class="f">init.go<small>startup commands</small></div>
+      <div class="f">keys.go<small>key handling</small></div>
+      <div class="f">update.go<small>message dispatch</small></div>
+      <div class="f">view.go<small>rendering</small></div>
+      <div class="f">stream.go<small>streaming events</small></div>
+      <div class="f">submit.go<small>prompt submission</small></div>
+      <div class="f">modal.go<small>modal choices</small></div>
+      <div class="f">session.go<small>session switching</small></div>
+      <div class="f">test_shims.go<small>*ForTest helpers</small></div>
+      <div class="f">app.go<small>core: App struct + accessors — 141 lines</small></div>
+    </div>
+
+    <p>What stays behind is the core: the central struct itself and its small accessors. Everything else gets a feature-named home.</p>
+  </div>
+</section>
+
+<section id="step2">
+  <div class="wrap reveal">
+    <h2><span class="stepnum">2</span>Move feature clusters of methods</h2>
+    <p class="lead">Most of the work is <code>-receiver</code> plus an anchored alternation: methods of one type that form a feature.</p>
+
+    <div class="terminal" id="typeTerm">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">splitting app.go — watch it type</span></div>
+      <pre id="typeTarget"><span class="prompt">$</span> sflit <span class="flag">-source</span> app.go <span class="flag">-receiver</span> App <span class="flag">-regex</span> <span class="str">'^(globalKey|toggleThinking|cycleModel)$'</span> <span class="flag">-sink</span> keys.go <span class="flag">-move</span>
+<span class="prompt">$</span> sflit <span class="flag">-source</span> app.go <span class="flag">-receiver</span> App <span class="flag">-regex</span> <span class="str">'^(Update|forwardToSubModels)$'</span> <span class="flag">-sink</span> update.go <span class="flag">-move</span>
+<span class="prompt">$</span> sflit <span class="flag">-source</span> app.go <span class="flag">-receiver</span> App <span class="flag">-regex</span> <span class="str">'^View$'</span> <span class="flag">-sink</span> view.go <span class="flag">-move</span>
+<span class="ok">moved 7 declarations · imports updated · gofmt clean</span></pre>
+    </div>
+
+    <p>How the regex selects — anchors keep the match honest:</p>
+    <div class="regex-demo reveal-map" id="regexDemo">
+      <div class="pattern">-receiver App -regex '^(globalKey|toggleThinking|cycleModel)$'</div>
+      <div class="decl">func (a *App) Update(msg tea.Msg) <span class="tag">·</span></div>
+      <div class="decl hit">func (a *App) globalKey(k tea.KeyMsg) <span class="tag">✓ matched</span></div>
+      <div class="decl">func (a *App) forceUpdateLayout() <span class="tag">·</span></div>
+      <div class="decl hit">func (a *App) toggleThinking() <span class="tag">✓ matched</span></div>
+      <div class="decl">func (a *App) View() string <span class="tag">·</span></div>
+      <div class="decl hit">func (a *App) cycleModel() <span class="tag">✓ matched</span></div>
+    </div>
+
+    <div class="tip"><strong>Selector habits that pay off:</strong>
+      <ul style="margin: 6px 0 0 20px; color: var(--text-dim); font-size: 0.92rem;">
+        <li><strong style="color: var(--text)">Anchor everything</strong> (<code>^...$</code>). Unanchored patterns match substrings — <code>Update</code> would also pick <code>forceUpdateLayout</code>.</li>
+        <li><strong style="color: var(--text)">Alternation over multiple runs.</strong> One explicit <code>^(a|b|c)$</code> list per sink documents the partition in your shell history.</li>
+        <li><strong style="color: var(--text)">A regex prefix groups a family.</strong> <code>-regex '^handleModalChoice'</code> moves every modal-choice handler in one go.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section id="step3">
+  <div class="wrap reveal">
+    <h2><span class="stepnum">3</span>Move a type together with its methods</h2>
+    <p class="lead"><code>-receiver</code> alone selects the type declaration <em>and</em> all its methods, so a helper type travels as one unit.</p>
+    <div class="terminal">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">types travel whole</span></div>
+      <pre><span class="prompt">$</span> sflit <span class="flag">-source</span> app.go <span class="flag">-receiver</span> sendWriter <span class="flag">-sink</span> submit.go <span class="flag">-move</span>
+
+<span class="out"># Types without methods work the same way — -receiver still selects the type:</span>
+<span class="prompt">$</span> sflit <span class="flag">-source</span> app.go <span class="flag">-receiver</span> pendingToolCall <span class="flag">-sink</span> stream.go <span class="flag">-move</span>
+<span class="prompt">$</span> sflit <span class="flag">-source</span> app.go <span class="flag">-receiver</span> Config          <span class="flag">-sink</span> new.go    <span class="flag">-move</span></pre>
+    </div>
+    <p>Need only <em>some</em> methods while the type stays put? Combine both flags: <code>-receiver App -regex '^Filter'</code> moves matching methods of <code>App</code> and leaves the type behind.</p>
+  </div>
+</section>
+
+<section id="step4">
+  <div class="wrap reveal">
+    <h2><span class="stepnum">4</span>Free functions, vars, and consts</h2>
+    <p class="lead"><code>-regex</code> matches any top-level declaration by name — funcs, methods (by method name, any receiver), vars, consts, types.</p>
+    <div class="terminal">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">constructors move as one cluster</span></div>
+      <pre><span class="prompt">$</span> sflit <span class="flag">-source</span> app.go \
+    <span class="flag">-regex</span> <span class="str">'^(New|defaultThemes|defaultUISource|defaultCellRegistry|defaultBridge|resolveModels)$'</span> \
+    <span class="flag">-sink</span> new.go <span class="flag">-move</span></pre>
+    </div>
+    <p>Grouped <code>var</code>/<code>const</code>/<code>type</code> blocks are <strong>narrowed</strong>: the matching specs travel, the siblings stay behind. Comments travel with their declarations — doc comments, <code>//go:</code> directives, in-body comments, all of it.</p>
+    <div class="tip"><strong>Exception:</strong> a const block using <code>iota</code> or implicit expressions is a blocked split — move the whole block or refactor it first. sflit refuses rather than guessing.</div>
+  </div>
+</section>
+
+<section id="step5">
+  <div class="wrap reveal">
+    <h2><span class="stepnum">5</span>Exploit naming conventions</h2>
+    <p class="lead">A suffix convention turns into a one-line sweep.</p>
+    <div class="terminal">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">everything *ForTest, gone in one move</span></div>
+      <pre><span class="prompt">$</span> sflit <span class="flag">-source</span> app.go <span class="flag">-regex</span> <span class="str">'ForTest$'</span> <span class="flag">-sink</span> test_shims.go <span class="flag">-move</span></pre>
+    </div>
+    <p>This is one of the few places an unanchored-at-the-start pattern is exactly right: you want every declaration ending in <code>ForTest</code>, whatever it's called.</p>
+  </div>
+</section>
+
+<section id="step6">
+  <div class="wrap reveal">
+    <h2><span class="stepnum">6</span>Mirror the tests</h2>
+    <p class="lead"><code>_test.go</code> files move the same way, so the test layout can mirror the source layout.</p>
+    <div class="terminal">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">test-file parity</span></div>
+      <pre><span class="prompt">$</span> sflit <span class="flag">-source</span> app_test.go <span class="flag">-regex</span> <span class="str">'^TestStream'</span> <span class="flag">-sink</span> stream_test.go <span class="flag">-move</span>
+<span class="prompt">$</span> sflit <span class="flag">-source</span> app_test.go <span class="flag">-regex</span> <span class="str">'^TestKeys'</span>   <span class="flag">-sink</span> keys_test.go   <span class="flag">-move</span></pre>
+    </div>
+    <p><code>stream.go</code> gets <code>stream_test.go</code>, <code>keys.go</code> gets <code>keys_test.go</code>, and so on. In the worked example the 1460-line test file dissolved into 11 feature-named test files and was deleted once every declaration had moved.</p>
+    <div class="tip"><strong>One guard you will meet here:</strong> a sink's package must match the source's. Moving <code>package app_test</code> declarations into a <code>package app</code> file fails fast with a package mismatch — pick a sink with the right package clause.</div>
+  </div>
+</section>
+
+<section id="step7">
+  <div class="wrap reveal">
+    <h2><span class="stepnum">7</span>When a move turns out wrong</h2>
+    <p class="lead">A reversal is the same move with source and sink swapped. sflit keeps no history; the reversal is just another move, with the same guarantees.</p>
+    <div class="terminal">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">regret-driven development</span></div>
+      <pre><span class="out"># cycleModel didn't belong in keys.go after all — send it back:</span>
+<span class="prompt">$</span> sflit <span class="flag">-source</span> keys.go <span class="flag">-regex</span> <span class="str">'^cycleModel$'</span> <span class="flag">-sink</span> app.go <span class="flag">-move</span></pre>
+    </div>
+  </div>
+</section>
+
+<section id="guards">
+  <div class="wrap reveal">
+    <h2>🛡️ What sflit refuses to do</h2>
+    <p class="lead">The guarantee is "never change what the program means." Anywhere that guarantee can't hold, sflit refuses instead of guessing — copy and move alike.</p>
+
+    <div class="guard"><span class="sign">⛔</span><p><strong><code>init</code> functions are rejected.</strong> Moving them may change package initialization order; copying duplicates init so it runs twice.</p></div>
+    <div class="guard"><span class="sign">⛔</span><p><strong>Narrowing an <code>iota</code>/implicit const block is blocked.</strong> Select the whole block, or refactor the constants manually first.</p></div>
+    <div class="guard"><span class="sign">⛔</span><p><strong>Narrowing a multi-name spec is blocked</strong> unless each name has a corresponding explicit value.</p></div>
+    <div class="guard"><span class="sign">⛔</span><p><strong>Generated files, cgo (<code>import "C"</code>), and dot imports are rejected.</strong> Build-constrained files can only move into sinks with identical constraints.</p></div>
+    <div class="guard"><span class="sign">⛔</span><p><strong>Same-directory copies are rejected.</strong> The source would keep the declarations, the package would gain duplicates and stop compiling. Use <code>-move</code>, or copy into a different directory.</p></div>
+
+    <h2 style="margin-top: 40px;">⚡ Fan out without coordination</h2>
+    <p class="lead">Safe to run N concurrent invocations on the same files with no external coordination — built for agents splitting in parallel.</p>
+    <p>Each run hashes source and sink at parse and verifies them under a short per-file lock at commit. If another writer — sflit or not — changed a file in between, the run re-runs against the fresh content, up to <code>-retries</code> times (default 5). Add <code>-json</code> for a structured result an agent can parse.</p>
+  </div>
+</section>
+
+<section id="result">
+  <div class="wrap reveal">
+    <h2>The result</h2>
+    <p class="lead">Every command in this guide ran against real code; the result built, vetted, and tested green.</p>
+
+    <div class="sizebars reveal-map" id="sizebars">
+      <div class="sizebar">
+        <span class="label">app.go before</span>
+        <div class="track"><div class="fill before"></div></div>
+        <span class="num">1208 lines</span>
+      </div>
+      <div class="sizebar">
+        <span class="label">app.go after</span>
+        <div class="track"><div class="fill after"></div></div>
+        <span class="num">141 lines</span>
+      </div>
+    </div>
+
+    <table>
+      <thead><tr><th>File</th><th>Before</th><th>After</th></tr></thead>
+      <tbody>
+        <tr><td><code>app.go</code></td><td>1208 lines</td><td><span class="shrink">141 lines</span> (core type + accessors) + 10 feature files</td></tr>
+        <tr><td><code>app_test.go</code></td><td>1460 lines</td><td><span class="shrink">deleted</span>; 11 feature-named test files</td></tr>
+      </tbody>
+    </table>
+
+    <p>Each move is semantically accurate — re-parsed and reprinted through <code>gofmt</code>, imports updated, comments traveling with their declarations — so the whole split landed as <strong>pure-move commits</strong> with the build green after every step.</p>
+
+    <div class="terminal">
+      <div class="bar"><span class="dot r"></span><span class="dot y"></span><span class="dot g"></span><span class="title">verify after every move</span></div>
+      <pre><span class="prompt">$</span> go build ./... && go vet ./... && go test ./...
+<span class="ok">ok</span>      <span class="out">— nothing changed but the file boundaries.</span></pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <p><code>sflit</code> · <a href="https://github.com/veggiemonk/sflit">github.com/veggiemonk/sflit</a> · run <code>sflit -h</code> for the full reference, <code>sflit --tool-schema</code> for agent integration.</p>
+  </div>
+</footer>
+
+<script>
+  // ---- hero split animation (canvas, loops forever) ----
+  (function () {
+    const canvas = document.getElementById('heroCanvas');
+    if (!canvas || !canvas.getContext) return;
+    const ctx = canvas.getContext('2d');
+    const W = 860, H = 360; // logical coordinate space
+
+    const C = {
+      card: '#1c2128', border: '#30363d', bar: '#161b22', dim: '#8b949e',
+      keys: '#58a6ff', update: '#7ee787', view: '#d2a8ff', stream: '#f0883e', core: '#8b949e',
+      pill: '#7ee787', arrow: '#58a6ff',
+    };
+    const MONO = '11px "SF Mono", Menlo, Consolas, monospace';
+
+    // ---- layout ----
+    const big = { x: 120, y: 58, w: 200, h: 244, bar: 26, title: '\u{1F4C4} app.go — 1208 lines' };
+    const sinkX = 560, sinkW = 175, sinkBar = 22;
+
+    // [cluster, width fraction] in source order; 'core' lines stay behind
+    const SPECS = [
+      ['core', 1], ['core', .7],
+      ['keys', 1], ['keys', .8], ['keys', .6],
+      ['update', 1], ['update', .85], ['update', .65],
+      ['view', 1], ['view', .75],
+      ['stream', 1], ['stream', .9], ['stream', .55],
+      ['core', .5],
+    ];
+    const CLUSTERS = ['keys', 'update', 'view', 'stream'];
+
+    const srcPad = 12, srcLineH = 5, srcGap = 9;
+    const lines = SPECS.map(([c, w], i) => ({
+      c, color: C[c],
+      sx: big.x + srcPad,
+      sy: big.y + big.bar + srcPad + i * (srcLineH + srcGap),
+      sw: (big.w - 2 * srcPad) * w,
+    }));
+
+    const dstPad = 9, dstLineH = 4, dstGap = 7;
+    let stackY = 0;
+    const sinks = CLUSTERS.map(key => {
+      const members = lines.filter(l => l.c === key);
+      const h = sinkBar + dstPad * 2 + members.length * dstLineH + (members.length - 1) * dstGap;
+      const card = { key, title: key + '.go', y: stackY, h, color: C[key] };
+      members.forEach((l, j) => {
+        l.dx = sinkX + dstPad;
+        l.dy = stackY + sinkBar + dstPad + j * (dstLineH + dstGap);
+        l.dw = (sinkW - 2 * dstPad) * (l.sw / (big.w - 2 * srcPad));
+      });
+      stackY += h + 14;
+      return card;
+    });
+    const yOff = (H - (stackY - 14)) / 2; // center the sink column
+    sinks.forEach(s => s.y += yOff);
+    lines.forEach(l => { if (l.dy !== undefined) l.dy += yOff; });
+
+    // ---- timeline (seconds) ----
+    const FLY = 0.7, STAGGER = 0.15, CLUSTER_GAP = 0.9, HOLD = 1.4, REWIND = 0.6;
+    let lastEnd = 0;
+    CLUSTERS.forEach((k, i) => {
+      lines.filter(l => l.c === k).forEach((l, j) => {
+        l.t0 = 0.6 + i * CLUSTER_GAP + j * STAGGER;
+        lastEnd = Math.max(lastEnd, l.t0 + FLY);
+      });
+    });
+    const TOTAL = lastEnd + HOLD + REWIND;
+
+    const ease = p => p < .5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+    const clamp01 = v => Math.max(0, Math.min(1, v));
+
+    function rr(x, y, w, h, r, fill, stroke) {
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, r);
+      if (fill) { ctx.fillStyle = fill; ctx.fill(); }
+      if (stroke) { ctx.strokeStyle = stroke; ctx.lineWidth = 1; ctx.stroke(); }
+    }
+
+    function card(x, y, w, h, barH, title, accent) {
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = 24; ctx.shadowOffsetY = 8;
+      rr(x, y, w, h, 10, C.card);
+      ctx.restore();
+      rr(x, y, w, h, 10, null, C.border);
+      ctx.save();
+      ctx.beginPath(); ctx.roundRect(x, y, w, barH, [10, 10, 0, 0]);
+      ctx.fillStyle = C.bar; ctx.fill();
+      ctx.restore();
+      ctx.strokeStyle = C.border; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.moveTo(x, y + barH + .5); ctx.lineTo(x + w, y + barH + .5); ctx.stroke();
+      ctx.fillStyle = accent || C.dim;
+      ctx.font = MONO;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(title, x + 10, y + barH / 2 + 1);
+    }
+
+    function bar(x, y, w, h, color, alpha) {
+      if (alpha <= 0) return;
+      ctx.globalAlpha = alpha;
+      rr(x, y, w, h, h / 2, color);
+      ctx.globalAlpha = 1;
+    }
+
+    function draw(t) {
+      ctx.clearRect(0, 0, W, H);
+      const r = clamp01((t - lastEnd - HOLD) / REWIND); // 0→1 crossfade back at loop end
+
+      card(big.x, big.y, big.w, big.h, big.bar, big.title);
+
+      // sink cards fade in just before their cluster flies, fade out on rewind
+      sinks.forEach((s, i) => {
+        const a = r > 0 ? 1 - r : clamp01((t - (0.35 + i * CLUSTER_GAP)) / 0.35);
+        if (a <= 0) return;
+        ctx.globalAlpha = a;
+        card(sinkX, s.y, sinkW, s.h, sinkBar, s.title, s.color);
+        ctx.globalAlpha = 1;
+      });
+
+      // command pill + drifting arrow
+      const cx = 440;
+      ctx.font = MONO;
+      const label = 'sflit -move';
+      const tw = ctx.measureText(label).width;
+      rr(cx - tw / 2 - 11, 150, tw + 22, 24, 6, C.bar, C.border);
+      ctx.fillStyle = C.pill;
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, cx - tw / 2, 163);
+      const adx = Math.sin(t * Math.PI * 2 / 1.6) * 4;
+      ctx.strokeStyle = C.arrow; ctx.lineWidth = 2; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.beginPath();
+      ctx.moveTo(cx - 16 + adx, 196); ctx.lineTo(cx + 12 + adx, 196);
+      ctx.moveTo(cx + 4 + adx, 189); ctx.lineTo(cx + 12 + adx, 196); ctx.lineTo(cx + 4 + adx, 203);
+      ctx.stroke();
+
+      for (const l of lines) {
+        if (l.c === 'core') { bar(l.sx, l.sy, l.sw, srcLineH, l.color, 0.85); continue; }
+        if (r > 0) { // rewind: dest fades out, source fades back in
+          bar(l.sx, l.sy, l.sw, srcLineH, l.color, 0.12 + 0.73 * r);
+          bar(l.dx, l.dy, l.dw, dstLineH, l.color, 1 - r);
+          continue;
+        }
+        const p = ease(clamp01((t - l.t0) / FLY));
+        if (p <= 0) { bar(l.sx, l.sy, l.sw, srcLineH, l.color, 0.85); continue; }
+        bar(l.sx, l.sy, l.sw, srcLineH, l.color, Math.max(0.12, 0.85 * (1 - p * 2)));
+        if (p >= 1) { bar(l.dx, l.dy, l.dw, dstLineH, l.color, 1); continue; }
+        // in flight along a slight upward arc (quadratic bezier)
+        const mx = (l.sx + l.dx) / 2, my = (l.sy + l.dy) / 2 - 36;
+        const q = 1 - p;
+        const x = q * q * l.sx + 2 * q * p * mx + p * p * l.dx;
+        const y = q * q * l.sy + 2 * q * p * my + p * p * l.dy;
+        bar(x, y, l.sw + (l.dw - l.sw) * p, srcLineH + (dstLineH - srcLineH) * p, l.color, 1);
+      }
+    }
+
+    function resize() {
+      const cssW = canvas.clientWidth || W;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssW * (H / W) * dpr);
+      const s = canvas.width / W;
+      ctx.setTransform(s, 0, 0, s, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    let rafId = null, t0 = null;
+    function frame(now) {
+      if (t0 === null) t0 = now;
+      draw(((now - t0) / 1000) % TOTAL);
+      rafId = requestAnimationFrame(frame);
+    }
+    // run only while on screen
+    new IntersectionObserver(entries => {
+      for (const e of entries) {
+        if (e.isIntersecting && rafId === null) rafId = requestAnimationFrame(frame);
+        else if (!e.isIntersecting && rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+      }
+    }, { threshold: 0.05 }).observe(canvas);
+  })();
+
+  // ---- scroll reveal ----
+  const io = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) {
+        e.target.classList.add('shown');
+        io.unobserve(e.target);
+      }
+    }
+  }, { threshold: 0.18 });
+  document.querySelectorAll('.reveal, .reveal-map').forEach(el => io.observe(el));
+
+  // ---- typed terminal (step 2) ----
+  const lines = [
+    { t: "$ ", c: "prompt" },
+    { t: "sflit ", c: "" },
+    { t: "-source ", c: "flag" }, { t: "app.go ", c: "" },
+    { t: "-receiver ", c: "flag" }, { t: "App ", c: "" },
+    { t: "-regex ", c: "flag" }, { t: "'^(globalKey|toggleThinking|cycleModel)$' ", c: "str" },
+    { t: "-sink ", c: "flag" }, { t: "keys.go ", c: "" },
+    { t: "-move", c: "flag" },
+    { t: "\n", c: "" },
+    { t: "$ ", c: "prompt" },
+    { t: "sflit ", c: "" },
+    { t: "-source ", c: "flag" }, { t: "app.go ", c: "" },
+    { t: "-receiver ", c: "flag" }, { t: "App ", c: "" },
+    { t: "-regex ", c: "flag" }, { t: "'^(Update|forwardToSubModels)$' ", c: "str" },
+    { t: "-sink ", c: "flag" }, { t: "update.go ", c: "" },
+    { t: "-move", c: "flag" },
+    { t: "\n", c: "" },
+    { t: "$ ", c: "prompt" },
+    { t: "sflit ", c: "" },
+    { t: "-source ", c: "flag" }, { t: "app.go ", c: "" },
+    { t: "-receiver ", c: "flag" }, { t: "App ", c: "" },
+    { t: "-regex ", c: "flag" }, { t: "'^View$' ", c: "str" },
+    { t: "-sink ", c: "flag" }, { t: "view.go ", c: "" },
+    { t: "-move", c: "flag" },
+    { t: "\n", c: "" },
+    { t: "moved 7 declarations · imports updated · gofmt clean", c: "ok" },
+  ];
+
+  const target = document.getElementById('typeTarget');
+  let started = false;
+
+  function typeIt() {
+    if (started) return;
+    started = true;
+    target.innerHTML = "";
+    const cursor = document.createElement('span');
+    cursor.className = 'typed-cursor';
+    target.appendChild(cursor);
+
+    let li = 0, ci = 0;
+    let span = null;
+
+    function step() {
+      if (li >= lines.length) { return; }
+      const seg = lines[li];
+      if (ci === 0) {
+        span = document.createElement('span');
+        if (seg.c) span.className = seg.c;
+        target.insertBefore(span, cursor);
+      }
+      if (seg.t === "\n") {
+        span.textContent = "\n";
+        li++; ci = 0;
+        setTimeout(step, 260);
+        return;
+      }
+      span.textContent += seg.t[ci];
+      ci++;
+      if (ci >= seg.t.length) { li++; ci = 0; }
+      setTimeout(step, 14 + Math.random() * 22);
+    }
+    step();
+  }
+
+  const termIO = new IntersectionObserver((entries) => {
+    for (const e of entries) {
+      if (e.isIntersecting) { typeIt(); termIO.disconnect(); }
+    }
+  }, { threshold: 0.4 });
+  termIO.observe(document.getElementById('typeTerm'));
+</script>
+</body>
+</html>
