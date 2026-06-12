@@ -127,6 +127,46 @@ func TestSemEqual_FormatAndImportChurn(t *testing.T) {
 	}
 }
 
+// Group-level doc on a var/const/type block must participate in equality.
+// Dropping it is a mismatch; the oracle was blind to this before the fix.
+func TestSemEqual_LostGroupDocComment(t *testing.T) {
+	// before: group has a block-level doc; after: doc is dropped.
+	before := []string{"package p\n// Block doc.\nvar (\n\ta = 1\n)\n"}
+	after := []string{"package p\nvar (\n\ta = 1\n)\n"}
+	err := SemEqual(before, after)
+	if err == nil {
+		t.Fatal("want inequality: group-level doc was dropped")
+	}
+	if !strings.Contains(err.Error(), "a") {
+		t.Fatalf("error should name the affected unit, got: %v", err)
+	}
+}
+
+// Symmetric: adding a group-level doc where none existed is also a mismatch.
+func TestSemEqual_AddedGroupDocComment(t *testing.T) {
+	before := []string{"package p\nvar (\n\ta = 1\n)\n"}
+	after := []string{"package p\n// Block doc.\nvar (\n\ta = 1\n)\n"}
+	err := SemEqual(before, after)
+	if err == nil {
+		t.Fatal("want inequality: group-level doc was added")
+	}
+	if !strings.Contains(err.Error(), "a") {
+		t.Fatalf("error should name the affected unit, got: %v", err)
+	}
+}
+
+// Regrouping equivalence: ungrouped spelling with doc vs grouped spelling with
+// the same doc must be EQUAL — the oracle deliberately allows regrouping.
+func TestSemEqual_RegroupingWithDocIsEqual(t *testing.T) {
+	// ungrouped: doc sits on the GenDecl, spec has no own doc
+	ungrouped := []string{"package p\n// D\nvar a = 1\n"}
+	// grouped: doc sits on the GenDecl above the paren
+	grouped := []string{"package p\n// D\nvar (\n\ta = 1\n)\n"}
+	if err := SemEqual(ungrouped, grouped); err != nil {
+		t.Fatalf("want equal: ungrouped vs grouped with same doc; got %v", err)
+	}
+}
+
 func TestSemEqual_ParseError(t *testing.T) {
 	if err := SemEqual([]string{"package p\nfunc {"}, []string{"package p\n"}); err == nil ||
 		!strings.Contains(err.Error(), "before") {

@@ -24,6 +24,12 @@ import (
 // canonical move bug, a declaration landing in both files, an inequality
 // even though the key set is unchanged.
 //
+// Group-level doc comments (the doc on the outer var/const/type block) are
+// attached to each spec that carries no own doc, so dropping or adding a
+// group-level doc is detected as a mismatch. Regrouping an ungrouped decl
+// that already carries the same doc is still equal: both spellings normalize
+// to the same wrapped form.
+//
 // Each argument is a slice of Go source strings. Used by tests to assert
 // that a split/move preserved semantics.
 func SemEqual(before, after []string) error {
@@ -136,8 +142,10 @@ func addDeclUnits(units map[string][]string, fset *token.FileSet, src string, d 
 				continue
 			}
 			doc, comment := specComments(s)
-			if doc == nil && !x.Lparen.IsValid() {
-				doc = x.Doc // ungrouped decl: the doc comment sits on the GenDecl
+			if doc == nil && x.Doc != nil {
+				// Group-level doc applies to every spec that lacks its own doc,
+				// whether grouped (var (...)) or ungrouped (var a = 1).
+				doc = x.Doc
 			}
 			end := s.End()
 			if comment != nil && comment.End() > end {
