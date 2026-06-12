@@ -1,0 +1,22 @@
+# A file cannot be its own sink. Without the identity guard, move mode
+# renders the source without the selected declarations and rename-overwrites
+# the just-written sink, so a blank-identifier declaration (no collision key
+# to save it accidentally) silently vanishes while the run exits 0.
+# Expect: non-zero exit in both modes, error naming the file, source unchanged.
+cp a.go a_before.go
+! exec sflit -source a.go -sink a.go -regex '^_$' -move
+stderr 'source a.go and sink a.go are the same file'
+cmp a.go a_before.go
+
+! exec sflit -source a.go -sink a.go -regex '^_$'
+stderr 'source a.go and sink a.go are the same file'
+cmp a.go a_before.go
+
+-- a.go --
+package p
+
+import "io"
+
+var _ io.Reader = (*B)(nil)
+
+type B struct{}

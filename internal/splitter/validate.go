@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go/ast"
 	"go/token"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -138,6 +139,22 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 		return fmt.Errorf(
 			"sink %s has package %q, but source %s has package %q",
 			plan.SinkPath, origSink.Name.Name, plan.SrcPath, origSrc.Name.Name,
+		)
+	}
+	// Identity: a file cannot be its own sink. On move, commit renames the
+	// rendered sink in and then the rendered source — which no longer holds
+	// the selected declarations — over it, so they vanish; on copy, the sink
+	// would duplicate every selected declaration. Guarded before the
+	// mode-specific checks below.
+	sameF, err := sameFile(plan.SrcPath, plan.SinkPath)
+	if err != nil {
+		return err
+	}
+	if sameF {
+		return fmt.Errorf(
+			"source %s and sink %s are the same file: a file cannot be its own sink; choose a different sink",
+			plan.SrcPath,
+			plan.SinkPath,
 		)
 	}
 	// Compute sameDir once; used for the copy guard below and threaded into
@@ -276,10 +293,45 @@ func validateDirectives(plan Plan, sameDirHint bool) error {
 	)
 }
 
+// sameFile reports whether the source and sink paths name one file.
+// Byte-equal cleaned absolute paths match without touching the filesystem;
+// otherwise both paths are stat-ed so that case-aliased spellings on a
+// case-insensitive volume, normalization aliases, and hardlinks compare
+// equal via os.SameFile. A sink that cannot be stat-ed (typically: it does
+// not exist yet) cannot be the already-parsed source; the source is stat-ed
+// only after the sink resolves, so the unit-test convention of placeholder
+// paths never reaches it.
+func sameFile(source, sink string) (bool, error) {
+	src, err := filepath.Abs(filepath.Clean(source))
+	if err != nil {
+		return false, fmt.Errorf("resolve %s: %w", source, err)
+	}
+	snk, err := filepath.Abs(filepath.Clean(sink))
+	if err != nil {
+		return false, fmt.Errorf("resolve %s: %w", sink, err)
+	}
+	if src == snk {
+		return true, nil
+	}
+	sinkInfo, err := os.Stat(snk)
+	if err != nil {
+		return false, nil //nolint:nilerr // a sink that cannot be stat-ed cannot be the existing source
+	}
+	srcInfo, err := os.Stat(src)
+	if err != nil {
+		return false, fmt.Errorf("stat source %s: %w", source, err)
+	}
+	return os.SameFile(srcInfo, sinkInfo), nil
+}
+
 // sameDir reports whether two file paths resolve to the same parent
-// directory. Comparison is on cleaned absolute paths, so relative and
-// absolute spellings of one directory match; symlinked aliases of a
-// directory are not resolved.
+// directory. Byte-equal cleaned absolute paths match without touching the
+// filesystem, so relative and absolute spellings of one directory compare
+// equal; otherwise both directories are stat-ed so that case-aliased
+// spellings on a case-insensitive volume, normalization aliases, and
+// symlinked aliases (os.Stat follows symlinks) compare equal via
+// os.SameFile. A sink directory that cannot be stat-ed (typically: not
+// created yet) cannot be the source's existing directory.
 func sameDir(a, b string) (bool, error) {
 	da, err := filepath.Abs(filepath.Dir(filepath.Clean(a)))
 	if err != nil {
@@ -289,7 +341,18 @@ func sameDir(a, b string) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("resolve directory of %s: %w", b, err)
 	}
-	return da == db, nil
+	if da == db {
+		return true, nil
+	}
+	dbInfo, err := os.Stat(db)
+	if err != nil {
+		return false, nil //nolint:nilerr // a sink directory that cannot be stat-ed cannot be the source's existing directory
+	}
+	daInfo, err := os.Stat(da)
+	if err != nil {
+		return false, fmt.Errorf("stat directory of %s: %w", a, err)
+	}
+	return os.SameFile(daInfo, dbInfo), nil
 }
 
 // validateImportAliases rejects a split whose sink already binds an alias

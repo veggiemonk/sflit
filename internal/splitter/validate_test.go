@@ -2,6 +2,7 @@ package splitter
 
 import (
 	"go/ast"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -532,5 +533,109 @@ func TestValidate_ImportAlias_MovedDeclVsSinkAlias(t *testing.T) {
 	err := validatePlan(plan, sink, src)
 	if err == nil || !strings.Contains(err.Error(), "shadow") {
 		t.Fatalf("want moved-decl-vs-sink-alias err, got %v", err)
+	}
+}
+
+// skipUnlessCaseInsensitive probes whether dir's filesystem aliases case
+// (writes "probe.go", stats "PROBE.GO": SameFile iff case-insensitive) and
+// skips the test on case-sensitive volumes. Same idiom as
+// TestLockAllCaseInsensitiveDedup in write_test.go.
+func skipUnlessCaseInsensitive(t *testing.T, dir string) {
+	t.Helper()
+	probe := filepath.Join(dir, "probe.go")
+	if err := os.WriteFile(probe, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	infoA, err := os.Stat(probe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeUpper := filepath.Join(dir, "PROBE.GO")
+	infoB, err := os.Stat(probeUpper)
+	if err != nil {
+		// ENOENT on a case-sensitive FS — skip.
+		t.Skipf("FS is case-sensitive (stat %q: %v) — case-insensitive volumes only", probeUpper, err)
+	}
+	if !os.SameFile(infoA, infoB) {
+		t.Skip("FS is case-sensitive — case-insensitive volumes only")
+	}
+}
+
+// TestValidate_SourceIsSinkRejected pins the identity guard: a file cannot
+// be its own sink. Without it, a move renders the source without the
+// selected declarations and rename-overwrites the just-written sink, so a
+// blank-identifier declaration (no collision key to save it accidentally)
+// silently vanishes while the run exits 0.
+func TestValidate_SourceIsSinkRejected(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		move bool
+	}{
+		{name: "move", move: true},
+		{name: "copy", move: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			dir := t.TempDir()
+			a := filepath.Join(dir, "a.go")
+			const content = "package p\n\nvar _ error = nil\n"
+			writeFile(t, a, content)
+			_, err := Run(Config{Source: a, Sink: a, Regex: "^_$", Move: tc.move})
+			if err == nil || !strings.Contains(err.Error(), "are the same file") {
+				t.Fatalf("want same-file rejection, got %v", err)
+			}
+			got, readErr := os.ReadFile(a)
+			if readErr != nil {
+				t.Fatal(readErr)
+			}
+			if string(got) != content {
+				t.Fatalf("rejected run modified the file:\n%s", got)
+			}
+		})
+	}
+}
+
+// TestValidate_SourceIsSinkRejected_CaseAlias covers the same identity
+// guard reached through a case-aliased sink spelling: on a case-insensitive
+// volume (macOS APFS default) "a.go" and "A.go" are one file, so a
+// byte-compare of the paths alone misses the identity.
+func TestValidate_SourceIsSinkRejected_CaseAlias(t *testing.T) {
+	dir := t.TempDir()
+	skipUnlessCaseInsensitive(t, dir)
+	a := filepath.Join(dir, "a.go")
+	const content = "package p\n\nvar _ error = nil\n"
+	writeFile(t, a, content)
+	_, err := Run(Config{Source: a, Sink: filepath.Join(dir, "A.go"), Regex: "^_$", Move: true})
+	if err == nil || !strings.Contains(err.Error(), "are the same file") {
+		t.Fatalf("want same-file rejection for case-aliased sink, got %v", err)
+	}
+	got, readErr := os.ReadFile(a)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(got) != content {
+		t.Fatalf("rejected run modified the file:\n%s", got)
+	}
+}
+
+// TestValidate_SameDirCopyRejected_CaseAliasedDir covers sameDir against
+// case-variant directory spellings: on a case-insensitive volume pkg/ and
+// PKG/ are one directory, so a copy into "PKG/b.go" would write a duplicate
+// declaration into the source's own package.
+func TestValidate_SameDirCopyRejected_CaseAliasedDir(t *testing.T) {
+	dir := t.TempDir()
+	skipUnlessCaseInsensitive(t, dir)
+	pkg := filepath.Join(dir, "pkg")
+	if err := os.MkdirAll(pkg, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	a := filepath.Join(pkg, "a.go")
+	writeFile(t, a, "package p\n\nfunc Filter() {}\n")
+	sink := filepath.Join(dir, "PKG", "b.go")
+	_, err := Run(Config{Source: a, Sink: sink, Regex: "^Filter$"})
+	if err == nil || !strings.Contains(err.Error(), "cannot copy within the same directory") {
+		t.Fatalf("want same-directory copy rejection for case-aliased dir, got %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(pkg, "b.go")); statErr == nil {
+		t.Fatal("rejected copy still wrote b.go into the source directory")
 	}
 }
