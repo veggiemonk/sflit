@@ -21,9 +21,12 @@
 // Guarantees on [Config.Move]: source and sink are written via temp-file +
 // rename so a crash leaves both files valid. Concurrent invocations on the
 // same files are safe without external coordination: each run hashes source
-// and sink at parse and verifies both under a short per-file sidecar lock at
-// commit, re-running the pipeline on conflict up to [Config.Retries] times
-// (optimistic concurrency, see docs/adr/0001). Comments associated with moved
+// and sink at parse and verifies them at commit. On move, both files are
+// verified and written under per-file sidecar locks. On copy, only the sink
+// is locked and written; the source pre-image is verified lock-free (a lock
+// on a file the commit never writes is unnecessary and fails in read-only
+// trees such as the module cache). Re-runs the pipeline on conflict up to
+// [Config.Retries] times (optimistic concurrency, see docs/adr/0001). Comments associated with moved
 // declarations travel with them, including doc comments, //go: directives,
 // leading comments, in-body comments, inline comments, and trailing orphan
 // comments when the matched declaration is at the end of the file. Moves that
@@ -70,7 +73,11 @@ func Run(cfg Config) (Result, error) {
 			res.Attempts = attempt + 1
 			return res, err
 		}
-		cfg.logger().Info("commit conflict, retrying", "attempt", attempt+1, "of", retries+1)
+		// Only log when a retry actually follows; the final attempt gives up
+		// without retrying and the message would be misleading.
+		if attempt < retries {
+			cfg.logger().Info("commit conflict, retrying", "attempt", attempt+1, "of", retries+1)
+		}
 	}
 	return Result{Attempts: retries + 1}, fmt.Errorf("gave up after %d attempts: %w", retries+1, err)
 }
@@ -123,10 +130,18 @@ func runOnce(cfg Config) (Result, error) {
 	if cfg.testHookBeforeCommit != nil {
 		cfg.testHookBeforeCommit()
 	}
-	// The commit verifies both pre-images under lock: even a copy, which
-	// only writes the sink, conflicts if the source it was rendered from
-	// has changed.
-	com := commit{snaps: []fileSnapshot{srcSnap, sinkSnap}}
+	// On copy, only the sink is locked and written; the source pre-image is
+	// verified lock-free (ADR-0001 Amendment 2). On move, both are locked and
+	// written.
+	var com commit
+	if !cfg.Move {
+		com = commit{
+			snaps:      []fileSnapshot{sinkSnap},
+			verifyOnly: []fileSnapshot{srcSnap},
+		}
+	} else {
+		com = commit{snaps: []fileSnapshot{srcSnap, sinkSnap}}
+	}
 	// On copy, only write the sink.
 	if !cfg.Move {
 		if err := com.writeSingle(cfg.Sink, sinkBytes); err != nil {

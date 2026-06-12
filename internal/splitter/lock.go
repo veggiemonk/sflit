@@ -12,8 +12,12 @@
 // sidecar is never unlinked (deleting an open file needs POSIX delete
 // semantics; best-effort platform, ADR-0001 Amendment 1), the recheck
 // passes trivially, and lock files remain — inert and safe to gitignore.
-// The kernel releases the lock on process death, so crashes leave no stale
-// locks.
+//
+// The kernel drops the flock on process death, so no lock STATE survives a
+// crash. The sidecar FILE can remain (always on windows; after a crash on
+// unix). A stale sidecar is inert — flock requires no write access — but
+// only if any user can open it. The mode is 0644 (not 0600) so that a
+// sidecar left by user A is still openable and lockable by user B.
 //
 // Platform lock calls live in lock_unix.go / lock_windows.go, adapted from
 // github.com/gofrs/flock (BSD-3-Clause, Copyright 2015 Tim Heckman,
@@ -47,21 +51,32 @@ func lockPath(target string) string {
 // releases it. Locks exclude between file descriptors, not just between
 // processes.
 func acquireFileLock(target string) (release func() error, err error) {
+	release, _, err = acquireFileLockInfo(target)
+	return release, err
+}
+
+// acquireFileLockInfo is acquireFileLock plus the locked fd's FileInfo.
+// lockAll uses the FileInfo to detect case-aliased sidecars on
+// case-insensitive volumes: if two differently-spelled paths yield the
+// same sidecar inode (os.SameFile), the second lock is already held and
+// must be skipped to avoid self-deadlock.
+func acquireFileLockInfo(target string) (release func() error, info fs.FileInfo, err error) {
 	path := filepath.Clean(lockPath(target))
 	for {
-		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o600)
+		//nolint:gosec // sidecar must be openable by other users after a crash leaves it behind
+		f, err := os.OpenFile(path, os.O_CREATE|os.O_RDONLY, 0o644)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		if err := flockExclusive(f); err != nil {
 			_ = f.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		current, err := lockfileCurrent(f, path)
 		if err != nil {
 			_ = funlock(f)
 			_ = f.Close()
-			return nil, err
+			return nil, nil, err
 		}
 		if !current {
 			// A releasing holder unlinked this inode between open and lock;
@@ -70,11 +85,17 @@ func acquireFileLock(target string) (release func() error, err error) {
 			_ = f.Close()
 			continue
 		}
+		fi, err := f.Stat()
+		if err != nil {
+			_ = funlock(f)
+			_ = f.Close()
+			return nil, nil, err
+		}
 		// Idempotent: a second call must not run removeLockFile without
 		// holding the lock — that would unlink the current holder's sidecar
 		// and reopen the two-winners race the recheck exists to close.
 		var once sync.Once
-		return func() (err error) {
+		rel := func() (err error) {
 			once.Do(func() {
 				removeLockFile(path) // must happen while the lock is still held
 				testHookBetweenUnlinkAndFunlock()
@@ -85,7 +106,8 @@ func acquireFileLock(target string) (release func() error, err error) {
 				err = f.Close()
 			})
 			return err
-		}, nil
+		}
+		return rel, fi, nil
 	}
 }
 

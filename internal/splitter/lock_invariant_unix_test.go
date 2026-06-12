@@ -79,7 +79,8 @@ func TestLockfileCurrent(t *testing.T) {
 	path := filepath.Join(dir, ".a.go.sflit.lock")
 	open := func() *os.File {
 		t.Helper()
-		f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_RDONLY, 0o600)
+		//nolint:gosec // sidecar mode test helper
+		f, err := os.OpenFile(filepath.Clean(path), os.O_CREATE|os.O_RDONLY, 0o644)
 		if err != nil {
 			t.Fatalf("open: %v", err)
 		}
@@ -127,4 +128,28 @@ func TestLockfileCurrent(t *testing.T) {
 			t.Fatal("path re-created with a fresh inode: want current=false")
 		}
 	})
+}
+
+// TestSidecarMode pins that a fresh sidecar has group and other read bits set
+// (mode & 0o044 != 0, umask-safe). A crash-left sidecar owned by user A must
+// remain openable and lockable by user B; 0600 would block the open with EACCES.
+func TestSidecarMode(t *testing.T) {
+	target := filepath.Join(t.TempDir(), "a.go")
+	release, err := acquireFileLock(target)
+	if err != nil {
+		t.Fatalf("acquire: %v", err)
+	}
+	defer func() { _ = release() }()
+
+	info, err := os.Stat(lockPath(target))
+	if err != nil {
+		t.Fatalf("stat sidecar: %v", err)
+	}
+	if info.Mode().Perm()&0o044 == 0 {
+		t.Errorf(
+			"sidecar mode = %o: group and other must have read (at least one of 0044 set) — "+
+				"a crash-left sidecar owned by another user must stay openable/lockable",
+			info.Mode().Perm(),
+		)
+	}
 }

@@ -229,7 +229,9 @@ func TestCommitClean_WritesBoth(t *testing.T) {
 }
 
 // Copy mode writes only the sink, but a mutated source still conflicts:
-// the rendered sink was derived from a stale parse.
+// the rendered sink was derived from a stale parse. The source snapshot
+// lives in verifyOnly (not snaps) — mirroring production: copy locks only
+// the sink sidecar and verifies the source lock-free.
 func TestCommitSingle_VerifiesSourceSnapshot(t *testing.T) {
 	dir := t.TempDir()
 	s := filepath.Join(dir, "a.go")
@@ -238,7 +240,7 @@ func TestCommitSingle_VerifiesSourceSnapshot(t *testing.T) {
 	if err := os.WriteFile(s, []byte("mutated"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c := commit{snaps: []fileSnapshot{snap, {path: k}}}
+	c := commit{snaps: []fileSnapshot{{path: k}}, verifyOnly: []fileSnapshot{snap}}
 	if err := c.writeSingle(k, []byte("copied")); !errors.Is(err, errConflict) {
 		t.Fatalf("want errConflict, got %v", err)
 	}
@@ -333,7 +335,9 @@ func TestCommitConflict_NoTempLitter(t *testing.T) {
 	}
 	noTempLitter(t, dir)
 
-	if err := c.writeSingle(k, []byte("copied")); !errors.Is(err, errConflict) {
+	// Copy mode: source in verifyOnly, only sink locked.
+	cc := commit{snaps: []fileSnapshot{{path: k}}, verifyOnly: []fileSnapshot{snap}}
+	if err := cc.writeSingle(k, []byte("copied")); !errors.Is(err, errConflict) {
 		t.Fatalf("writeSingle: want errConflict, got %v", err)
 	}
 	noTempLitter(t, dir)
@@ -492,5 +496,97 @@ func TestCommit_NewDirGroupTraversable(t *testing.T) {
 	}
 	if perm&0o040 != 0 && perm&0o010 == 0 {
 		t.Errorf("dir mode = %o: group can read the listing but not traverse", perm)
+	}
+}
+
+// TestCanonicalLockOrderCaseFolded pins the case-folding sort key: two
+// different case-spellings of the same path prefix must produce an identical
+// acquisition sequence so case-insensitive volumes (macOS APFS default)
+// cannot AB-BA deadlock. The test is pure (no FS access) — it proves the
+// sort logic regardless of whether the runtime FS is case-insensitive.
+func TestCanonicalLockOrderCaseFolded(t *testing.T) {
+	dir := t.TempDir()
+
+	// snaps1 and snaps2 use opposite case for the b.go entry. On a
+	// case-insensitive FS these name the same file; with a byte-wise sort
+	// 'B' < 'a', so without folding they yield opposite sequences.
+	bUpper := filepath.Join(dir, "B.go")
+	bLower := filepath.Join(dir, "b.go")
+	a := filepath.Join(dir, "a.go")
+
+	snaps1 := []fileSnapshot{{path: bUpper}, {path: a}}
+	snaps2 := []fileSnapshot{{path: bLower}, {path: a}}
+
+	order1, err := canonicalLockOrder(snaps1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	order2, err := canonicalLockOrder(snaps2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Both sequences must have the same length.
+	if len(order1) != len(order2) {
+		t.Fatalf("different lengths: %v vs %v", order1, order2)
+	}
+	// The folded primary keys must agree in order (a-before-b in both).
+	for i := range order1 {
+		if !strings.EqualFold(order1[i], order2[i]) {
+			t.Errorf(
+				"lock order differs at position %d: %q vs %q — "+
+					"case-aliased paths must produce the same acquisition sequence",
+				i, order1[i], order2[i],
+			)
+		}
+	}
+}
+
+// TestLockAllCaseInsensitiveDedup pins the identity-dedup path on a
+// case-insensitive FS: lockAll given both "a.go" and "A.go" (same inode)
+// must complete without self-deadlocking. Skips if t.TempDir is case-sensitive.
+func TestLockAllCaseInsensitiveDedup(t *testing.T) {
+	dir := t.TempDir()
+	// Probe whether the FS is case-insensitive by writing "probe.go" and
+	// stat-ing "PROBE.GO": SameFile iff case-insensitive.
+	probeA := filepath.Join(dir, "probe.go")
+	if err := os.WriteFile(probeA, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	infoA, err := os.Stat(probeA)
+	if err != nil {
+		t.Fatal(err)
+	}
+	probeB := filepath.Join(dir, "PROBE.GO")
+	infoB, err := os.Stat(probeB)
+	if err != nil {
+		// ENOENT on a case-sensitive FS — skip.
+		t.Skipf("FS is case-sensitive (stat %q: %v) — case-insensitive volumes only", probeB, err)
+	}
+	if !os.SameFile(infoA, infoB) {
+		t.Skip("FS is case-sensitive — case-insensitive volumes only")
+	}
+
+	// All spellings name the same inode. lockAll must not self-deadlock.
+	// Three spellings, not two: with more aliases than acquired locks the
+	// dedup walk must index the held-lock list, not the sorted path list —
+	// a paths-indexed walk reads past the held list and panics here.
+	p := filepath.Join(dir, "a.go")
+	pUpper := filepath.Join(dir, "A.go")
+	pUpper2 := filepath.Join(dir, "A.GO")
+	c := commit{snaps: []fileSnapshot{{path: p}, {path: pUpper}, {path: pUpper2}}}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		release, err := c.lockAll()
+		if err != nil {
+			t.Error(err)
+			return
+		}
+		release()
+	}()
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("deadlock: case-aliased snapshot paths must collapse to one lock on case-insensitive FS")
 	}
 }

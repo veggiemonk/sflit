@@ -5,7 +5,8 @@ Date: 2026-06-10
 ## Status
 
 Accepted (2026-06-10). Amended 2026-06-10: windows support is best-effort
-(see Amendment 1).
+(see Amendment 1). Amended 2026-06-12: copy mode locks only the sink sidecar;
+source pre-image verified lock-free (see Amendment 2).
 
 ## Context
 
@@ -223,6 +224,28 @@ Harder / costs:
   `FILE_DISPOSITION_POSIX_SEMANTICS` and keep the acquire-side identity
   recheck (`os.SameFile` already compares volume serial + file index on
   windows, so the shared acquire loop needs no change).
+
+## Amendment 2 (2026-06-12): copy mode locks only the sink sidecar
+
+Copy mode (`Config.Move = false`) only writes the sink file. Acquiring a
+sidecar lock next to the source is unnecessary — the lock guards the write
+window, and copy never writes the source — and it fails with EACCES in
+read-only source trees (Go module cache, vendored checkouts with 0555
+directories).
+
+Decision: `commit.lockAll` locks only `commit.snaps`; the source pre-image
+is moved to a new `commit.verifyOnly` slice that `commit.verify` checks
+lock-free. `runOnce` in `splitter.go` populates `verifyOnly` with `srcSnap`
+and `snaps` with only `sinkSnap` when `!cfg.Move`.
+
+Serializability argument: the lock guards the verify→rename pair to prevent
+two sflit processes both passing verify and then clobbering. Copy reads the
+source at parse time and again at verify time under the sink lock; it never
+renames the source. If the source changes after verify but before the sink
+rename, the copy is equivalent to one that completed entirely before that
+change — the sink content is consistent with some observed state of the
+source. Any genuine source change between parse and verify surfaces as
+`errConflict` via the hash check, triggering a retry.
 
 ## Amendment 1 (2026-06-10): windows support is best-effort
 

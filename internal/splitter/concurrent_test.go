@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -240,6 +241,82 @@ func TestConcurrentSameSink(t *testing.T) {
 	}
 }
 
+// TestCommitPicksModeUnderLock pins that the mode of the committed file
+// reflects a chmod that lands between writeTemp's stat and the rename.
+// writeTemp stats the target before locking and chmods the temp to that
+// mode; if a chmod races in after that stat but before the rename, the
+// rename overwrites the target with the old mode — silently reverting it.
+// The fix: stat-under-lock inside the commit window, Chmod the temp, then
+// rename.
+//
+// The test calls commit.writePair directly (not via Run) so the goroutine
+// enters writeTemp → lockAll without passing through the pre-commit hook
+// which fires before writeTemp. The sidecar is held externally so the
+// goroutine blocks after staging the temp (writeTemp done, stat done,
+// temp chmoded to 0644). We then chmod the target to 0600 and release.
+// Without the fix the committed file is 0644; with the fix it is 0600.
+func TestCommitPicksModeUnderLock(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod semantics differ on windows")
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.go")
+	sink := filepath.Join(dir, "b.go")
+
+	// Pre-create both files. src has a snapshot so verify passes.
+	snap := snapshotted(t, src, "src-content")
+	if err := os.WriteFile(filepath.Clean(sink), []byte("sink-content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sinkSnap := newFileSnapshot(sink, []byte("sink-content"))
+
+	// Hold the sink sidecar so the commit blocks in lockAll after writeTemp.
+	releaseSink, err := acquireFileLock(sink)
+	if err != nil {
+		t.Fatalf("hold sink lock: %v", err)
+	}
+
+	blocked := make(chan struct{})
+	done := make(chan struct{})
+	var commitErr error
+	go func() {
+		defer close(done)
+		// Signal just before entering the commit so the main goroutine knows
+		// writeTemp has run and the temp already carries the pre-chmod mode.
+		close(blocked)
+		c := commit{snaps: []fileSnapshot{snap, sinkSnap}}
+		commitErr = c.writePair(src, []byte("new-src"), sink, []byte("new-sink"))
+	}()
+
+	<-blocked
+	// Give the goroutine time to reach lockAll (writeTemp completes fast;
+	// 50 ms is ample for any scheduler latency without introducing a race).
+	time.Sleep(50 * time.Millisecond)
+
+	// chmod after writeTemp has sampled 0644 and chmoded the temp to 0644.
+	if err := os.Chmod(sink, 0o600); err != nil {
+		t.Fatalf("chmod sink: %v", err)
+	}
+	if err := releaseSink(); err != nil {
+		t.Fatalf("release sink lock: %v", err)
+	}
+	<-done
+	if commitErr != nil {
+		t.Fatalf("writePair: %v", commitErr)
+	}
+
+	info, err := os.Stat(sink)
+	if err != nil {
+		t.Fatalf("stat sink: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf(
+			"committed sink mode = %o, want 0600 — mode must be sampled under the lock, not before it",
+			got,
+		)
+	}
+}
+
 // TestCommitBlocksOnHeldLock pins the commit/lock interaction
 // deterministically, with no reliance on scheduler parallelism: while the
 // sink's sidecar lock is held externally, a run that has rendered and is
@@ -299,6 +376,52 @@ func TestCommitBlocksOnHeldLock(t *testing.T) {
 	}
 	if _, err := os.Stat(sink); err != nil {
 		t.Fatalf("sink not written after release: %v", err)
+	}
+}
+
+// TestOrphanSinkDirCleanedOnFailure pins that a new directory tree created by
+// writeTemp (for a sink whose parent dirs did not yet exist) is removed on every
+// failure path. A leaked directory is a go-build hazard: "go build ./..." sees a
+// package-less directory and may error. The hook mutates the source on every
+// attempt so all Retries+1 attempts conflict; after giving up, the sink dir
+// must not exist.
+func TestOrphanSinkDirCleanedOnFailure(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "big.go")
+	// sink lives two levels deep — neither "sub" nor "sub/new" exists yet.
+	sink := filepath.Join(dir, "sub", "new", "x.go")
+	if err := os.WriteFile(
+		src,
+		[]byte("package foo\n\nfunc FilterA() int { return 0 }\n\nfunc Other() int { return 2 }\n"),
+		0o600,
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	n := 0
+	_, err := Run(Config{
+		Source:  src,
+		Sink:    sink,
+		Regex:   "^Filter",
+		Retries: 1,
+		testHookBeforeCommit: func() {
+			n++
+			content := fmt.Sprintf(
+				"package foo\n\nfunc FilterA() int { return %d }\n\nfunc Other() int { return 2 }\n",
+				n,
+			)
+			if werr := os.WriteFile(src, []byte(content), 0o600); werr != nil {
+				t.Error(werr)
+			}
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "gave up") {
+		t.Fatalf("want gave-up error, got %v", err)
+	}
+
+	// The first missing ancestor of sink was dir/sub — it must not exist.
+	if _, statErr := os.Stat(filepath.Join(dir, "sub")); !os.IsNotExist(statErr) {
+		t.Errorf("orphan sink dir left behind after failed commit: %v", statErr)
 	}
 }
 
