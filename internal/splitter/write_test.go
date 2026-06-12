@@ -343,6 +343,57 @@ func TestCommitConflict_NoTempLitter(t *testing.T) {
 	noTempLitter(t, dir)
 }
 
+// TestStaging_MkdirAllFailureRollsBackCreatedDirs pins writeTempFile's
+// createdDir contract on the MkdirAll failure path: when MkdirAll creates
+// some ancestors and then fails (here: a leaf directory name over the
+// 255-byte filesystem limit, so a/ and a/b/ are created before the leaf
+// mkdir fails), the partially created tree must be rolled back, not leaked —
+// a package-less directory is a `go build ./...` hazard. Regresses the
+// `return "", "", err` that dropped createdDir, and the rollback walk
+// stopping at the first Remove failure (the rollback starts at a path deeper
+// than what MkdirAll actually created, so it must skip-and-climb).
+func TestStaging_MkdirAllFailureRollsBackCreatedDirs(t *testing.T) {
+	dir := t.TempDir()
+	leaf := strings.Repeat("d", 300) // over every mainstream FS name limit
+	sink := filepath.Join(dir, "a", "b", leaf, "x.go")
+
+	err := (commit{}).writeSingle(sink, []byte("x"))
+	if err == nil {
+		t.Skip("filesystem accepts 300-byte directory names; recipe does not apply")
+	}
+	if !strings.Contains(err.Error(), "write sink temp") {
+		t.Errorf("error should name the staging step: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "a")); !os.IsNotExist(statErr) {
+		t.Errorf("partially created sink dir tree leaked after MkdirAll failure: stat err %v", statErr)
+	}
+}
+
+// TestStagingVanishedDirClassifiesAsConflict pins the staging retry gate:
+// writeTempFile MkdirAlls the target directory immediately before creating
+// the temp, so fs.ErrNotExist from staging can only mean a concurrent run
+// removed the directory in between (its conflict rollback removing a
+// created-dir tree). That race is transient — a re-run re-stages and
+// re-creates the directory — so it must classify as errConflict for Run's
+// retry gate instead of a hard exit 1, or the fan-out-without-coordination
+// guarantee (ADR-0001) breaks on a race a bare re-run would absorb. Any
+// other staging failure stays non-retryable.
+func TestStagingVanishedDirClassifiesAsConflict(t *testing.T) {
+	vanished := wrapStageErr("sink", &fs.PathError{Op: "open", Path: "sub/x.go.tmp1", Err: fs.ErrNotExist})
+	if !errors.Is(vanished, errConflict) {
+		t.Errorf("vanished-dir staging failure must be retryable (errConflict): %v", vanished)
+	}
+	if !errors.Is(vanished, fs.ErrNotExist) {
+		t.Errorf("classification must preserve the underlying cause: %v", vanished)
+	}
+	if !strings.Contains(vanished.Error(), "write sink temp") {
+		t.Errorf("descriptive staging text lost: %v", vanished)
+	}
+	if other := wrapStageErr("sink", fs.ErrPermission); errors.Is(other, errConflict) {
+		t.Errorf("non-ENOENT staging failure must not masquerade as a retryable conflict: %v", other)
+	}
+}
+
 // TestVerify_ReadErrorIsNotConflict pins verify's non-ENOENT branch: a
 // pre-image that cannot be re-read (here: permission denied) is an
 // operational error, not a retryable conflict — retrying cannot fix EACCES,

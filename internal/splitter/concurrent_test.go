@@ -425,6 +425,134 @@ func TestOrphanSinkDirCleanedOnFailure(t *testing.T) {
 	}
 }
 
+// waitForGlob polls until pattern matches at least one path and returns the
+// first match. Used to observe a staged temp from outside the committing
+// goroutine without a hook inside the staging loop.
+func waitForGlob(t *testing.T, pattern string) string {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	for time.Now().Before(deadline) {
+		matches, err := filepath.Glob(pattern)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(matches) > 0 {
+			return matches[0]
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s to appear", pattern)
+	return ""
+}
+
+// TestOrphanSinkDirCleanedOnChmodFailure pins the release-before-cleanup
+// order on the in-window failure paths (chmod/rename), mirroring the verify
+// path: the sidecar lock lives in the sink's directory, so cleaning up while
+// the lock is still held makes removeCreatedDirTree fail ENOTEMPTY on the
+// sidecar and orphans the freshly created tree — the deferred release
+// unlinks the sidecar too late. The src sidecar is held externally so
+// writePair parks in lockAll after staging; deleting the staged sink temp
+// out from under it makes the in-window chmod fail ENOENT and drives the
+// cleanup path. TestOrphanSinkDirCleanedOnFailure covers only the
+// verify-failure path.
+func TestOrphanSinkDirCleanedOnChmodFailure(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.go")
+	// sink lives two levels deep — neither "sub" nor "sub/new" exists yet.
+	sink := filepath.Join(dir, "sub", "new", "x.go")
+	snap := snapshotted(t, src, "src-content")
+
+	// Hold the src sidecar (a.go sorts first) so the commit blocks in lockAll
+	// after both temps are staged.
+	releaseSrc, err := acquireFileLock(src)
+	if err != nil {
+		t.Fatalf("hold src lock: %v", err)
+	}
+
+	done := make(chan struct{})
+	var commitErr error
+	go func() {
+		defer close(done)
+		c := commit{snaps: []fileSnapshot{snap, {path: sink}}}
+		commitErr = c.writePair(src, []byte("new-src"), sink, []byte("new-sink"))
+	}()
+
+	// writePair stages temps before locking; the held src sidecar keeps it
+	// parked in lockAll, so the staged sink temp can be deleted race-free.
+	sinkTmp := waitForGlob(t, filepath.Join(dir, "sub", "new", "x.go.tmp*"))
+	if rmErr := os.Remove(sinkTmp); rmErr != nil {
+		t.Fatalf("remove staged sink temp: %v", rmErr)
+	}
+	if relErr := releaseSrc(); relErr != nil {
+		t.Fatalf("release src lock: %v", relErr)
+	}
+	<-done
+
+	if commitErr == nil {
+		t.Fatal("want in-window chmod failure, got nil")
+	}
+	if _, statErr := os.Stat(filepath.Join(dir, "sub")); !os.IsNotExist(statErr) {
+		t.Errorf("orphan sink dir left behind after in-window failure: stat err %v", statErr)
+	}
+	noTempLitter(t, dir)
+}
+
+// TestWritePair_ChmodFailureNamesCommittedSink pins the breadcrumb on the
+// post-sink-commit chmod path: once the sink rename has landed, ANY later
+// failure must say what already committed — in move mode the declarations
+// now exist in both files and a bare chmod error gives no hint that a re-run
+// will collide on the sink. The old writePair had no failure point between
+// the two renames; the per-entry chmod under the lock introduced one. Same
+// forced schedule as TestOrphanSinkDirCleanedOnChmodFailure, but deleting
+// the staged SRC temp so entry 1's chmod fails after entry 0 (sink) renamed.
+func TestWritePair_ChmodFailureNamesCommittedSink(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "a.go")
+	sink := filepath.Join(dir, "b.go")
+	snap := snapshotted(t, src, "src-content")
+
+	releaseSrc, err := acquireFileLock(src)
+	if err != nil {
+		t.Fatalf("hold src lock: %v", err)
+	}
+
+	done := make(chan struct{})
+	var commitErr error
+	go func() {
+		defer close(done)
+		c := commit{snaps: []fileSnapshot{snap, {path: sink}}}
+		commitErr = c.writePair(src, []byte("new-src"), sink, []byte("new-sink"))
+	}()
+
+	srcTmp := waitForGlob(t, filepath.Join(dir, "a.go.tmp*"))
+	if rmErr := os.Remove(srcTmp); rmErr != nil {
+		t.Fatalf("remove staged src temp: %v", rmErr)
+	}
+	if relErr := releaseSrc(); relErr != nil {
+		t.Fatalf("release src lock: %v", relErr)
+	}
+	<-done
+
+	if commitErr == nil {
+		t.Fatal("want chmod failure after sink rename, got nil")
+	}
+	if !strings.Contains(commitErr.Error(), "chmod src temp") {
+		t.Errorf("error should name the failing step: %v", commitErr)
+	}
+	if !strings.Contains(commitErr.Error(), "sink already committed at "+sink) {
+		t.Errorf("error must flag the committed sink for manual recovery: %v", commitErr)
+	}
+	got, readErr := os.ReadFile(filepath.Clean(sink))
+	if readErr != nil || string(got) != "new-sink" {
+		t.Errorf("sink must stay committed when the src chmod fails: %q (err %v)", got, readErr)
+	}
+	gotSrc, readErr := os.ReadFile(filepath.Clean(src))
+	if readErr != nil || string(gotSrc) != "src-content" {
+		t.Errorf("src must be untouched when its chmod fails: %q (err %v)", gotSrc, readErr)
+	}
+	noTempLitter(t, dir)
+}
+
 // TestRunGaveUpReportsAttempts pins Result.Attempts on the exhausted-retries
 // path: a run that gave up burned retries+1 attempts, and the Result must
 // say so — the field exists for orchestrator observability, and the give-up

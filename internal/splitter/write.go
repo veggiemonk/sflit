@@ -15,8 +15,11 @@ import (
 )
 
 // errConflict reports that a file changed, appeared, or vanished between
-// parse and commit. Run retries the whole pipeline on this error; nothing
-// has been written when it is returned.
+// parse and commit — including a sink directory removed by a concurrent
+// run's rollback between staging's MkdirAll and temp creation (see
+// wrapStageErr). Run retries the whole pipeline on this error; nothing has
+// been written when it is returned (staging failures clean up their temps
+// and created directories before returning).
 var errConflict = errors.New("conflict: file changed since parse")
 
 // commit owns the atomicity of a write against concurrent sflit runs and
@@ -188,7 +191,13 @@ type commitEntry struct {
 // target to pick the committed mode (existing file keeps its current mode;
 // new file gets 0644), chmods the temp, and renames. Any failure at any
 // stage cleans up remaining temps and any directory subtrees that were
-// created by writeTempFile for this call.
+// created by writeTempFile for this call. Every post-lock failure path
+// releases the locks BEFORE cleaning up: the sidecar lives in the target's
+// directory, so cleaning first leaves removeCreatedDirTree stuck on
+// ENOTEMPTY and orphans the created tree (release is idempotent, so the
+// success-path defer stays safe). A failure after any entry has renamed
+// names the already-committed entries — the files now hold the data and a
+// re-run will collide on them, so the user needs the breadcrumb to recover.
 //
 // The ordered-entry shape is the anticipated interface for batch/plan mode
 // (ADR-0001 Option E), which generalises the commit atom from 2 files to
@@ -224,7 +233,7 @@ func (c commit) runCommitWindow(entries []commitEntry) error {
 				removeCreatedDirTree(filepath.Dir(e.path), filepath.Dir(createdDir))
 			}
 			cleanupAll()
-			return fmt.Errorf("write %s temp: %w", e.label, err)
+			return wrapStageErr(e.label, err)
 		}
 		stagedList = append(stagedList, staged{entry: e, tmp: tmp, createdDir: createdDir})
 	}
@@ -257,13 +266,39 @@ func (c commit) runCommitWindow(entries []commitEntry) error {
 			mode = info.Mode().Perm()
 		}
 		if err := os.Chmod(filepath.Clean(s.tmp), mode); err != nil {
-			// Clean remaining temps; already-renamed files are committed.
+			// Release before cleanup (see the verify path), then clean
+			// remaining temps; already-renamed files are committed and the
+			// error must say so — stagedList[:i] now holds the data and a
+			// re-run collides on it without the breadcrumb.
+			release()
 			for _, rem := range stagedList[i:] {
 				cleanupOne(rem)
 			}
-			return err
+			if i > 0 {
+				committed := make([]string, 0, i)
+				for _, prev := range stagedList[:i] {
+					committed = append(
+						committed,
+						fmt.Sprintf(
+							"%s already committed at %s",
+							prev.entry.label,
+							prev.entry.path,
+						),
+					)
+				}
+				return fmt.Errorf(
+					"chmod %s temp (%s): %w",
+					s.entry.label,
+					strings.Join(committed, ", "),
+					err,
+				)
+			}
+			return fmt.Errorf("chmod %s temp: %w", s.entry.label, err)
 		}
 		if err := os.Rename(s.tmp, s.entry.path); err != nil {
+			// Release before cleanup, as above. wrapRenameErr carries the
+			// committed-sink breadcrumb on the pair's src entry (pinned string).
+			release()
 			cleanupOne(s)
 			for _, rem := range stagedList[i+1:] {
 				cleanupOne(rem)
@@ -274,17 +309,35 @@ func (c commit) runCommitWindow(entries []commitEntry) error {
 	return nil
 }
 
+// wrapStageErr decorates a writeTempFile failure for the entry label.
+// fs.ErrNotExist is additionally classified as errConflict: writeTempFile
+// MkdirAlls the target directory immediately before creating the temp, so
+// ENOENT from staging can only mean a concurrent run removed that directory
+// in between (its conflict rollback removing a created-dir tree). The race
+// is transient — a re-run re-stages from parse and re-creates the directory
+// — so it must reach Run's retry gate instead of exiting 1 and breaking the
+// fan-out-without-coordination guarantee (ADR-0001). errConflict's
+// nothing-has-been-written contract holds: the caller cleans up staged
+// temps and created directories before returning this error.
+func wrapStageErr(label string, err error) error {
+	if errors.Is(err, fs.ErrNotExist) {
+		return fmt.Errorf("write %s temp: %w (%w)", label, err, errConflict)
+	}
+	return fmt.Errorf("write %s temp: %w", label, err)
+}
+
 // removeCreatedDirTree removes empty directories starting at deepest and
 // climbing up to but not including stopAt (the first ancestor that existed
 // before the commit staged its temps). Each os.Remove call only deletes an
 // empty directory, so this can never destroy user content — it merely
-// reverses the MkdirAll that writeTempFile performed. On any Remove failure
-// (non-empty dir, permissions, already gone) the walk stops.
+// reverses the MkdirAll that writeTempFile performed. A failed Remove does
+// not stop the walk: deepest may sit below what MkdirAll actually created
+// when MkdirAll itself failed partway (ENOENT on the missing levels), and
+// climbing past any other failure is harmless — a directory that survives
+// its Remove makes every ancestor non-empty, so their Removes fail too.
 func removeCreatedDirTree(deepest, stopAt string) {
 	for d := deepest; d != stopAt && filepath.Dir(d) != d; d = filepath.Dir(d) {
-		if err := os.Remove(d); err != nil {
-			return
-		}
+		_ = os.Remove(d)
 	}
 }
 
@@ -319,9 +372,11 @@ func (c commit) writeSingle(path string, data []byte) error {
 // writeTempFile stages a temp file for finalPath in the same directory,
 // fsynced. It creates parent directories with MkdirAll if needed, and
 // returns the path to the created temp and the first ancestor directory
-// that was created (empty string if no dirs were created — they already
-// existed). The caller uses createdDir to roll back orphan directories on
-// failure.
+// that was missing before MkdirAll ran (empty string if the directory
+// already existed). The caller uses createdDir to roll back orphan
+// directories on failure; createdDir is valid on every failure return,
+// including a partial MkdirAll, where the rollback's skip-and-climb walk
+// (removeCreatedDirTree) absorbs the levels that were never created.
 //
 // The temp is created at CreateTemp's default 0600; the commit window
 // (runCommitWindow) sets the final mode under the lock, after verify, so a
@@ -329,9 +384,13 @@ func (c commit) writeSingle(path string, data []byte) error {
 func writeTempFile(finalPath string, data []byte) (tmp, createdDir string, err error) {
 	dir := filepath.Dir(finalPath)
 	base := filepath.Base(finalPath)
+	// createdDir is returned on EVERY failure path from here on, including
+	// MkdirAll's own: MkdirAll can create some ancestors and then fail
+	// (name limits, permissions), and dropping createdDir would skip the
+	// caller's rollback and leak the partial tree.
 	createdDir = firstMissingAncestor(dir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return "", "", err
+		return "", createdDir, err
 	}
 	f, err := os.CreateTemp(dir, base+".tmp*")
 	if err != nil {
