@@ -65,3 +65,13 @@ func TestConfigValidate(t *testing.T) {
 		})
 	}
 }
+
+// TestDefaultRetriesCoversFanOut pins the default retry bound to ADR-0001's
+// own context: an orchestrator fanning out N concurrent movers on one
+// source needs ~N attempts for the unluckiest run, and the ADR's cited
+// experiment used 11 sinks. The default must cover that without -retries.
+func TestDefaultRetriesCoversFanOut(t *testing.T) {
+	if defaultRetries < 11 {
+		t.Fatalf("defaultRetries = %d: cannot cover ADR-0001's own 11-sink fan-out without a -retries override", defaultRetries)
+	}
+}

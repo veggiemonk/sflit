@@ -167,11 +167,24 @@ func (c commit) writeSingle(path string, data []byte) error {
 func writeTemp(finalPath string, data []byte) (string, error) {
 	dir := filepath.Dir(finalPath)
 	base := filepath.Base(finalPath)
-	if err := os.MkdirAll(dir, 0o740); err != nil {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return "", err
+	}
+	// os.CreateTemp creates 0600 and os.Rename preserves the temp's mode, so
+	// without an explicit chmod every committed file would silently lose its
+	// permission bits. Replacing an existing file keeps its mode; a new file
+	// gets a regular 0644 (umask cannot apply post-CreateTemp).
+	mode := os.FileMode(0o644)
+	if info, err := os.Stat(filepath.Clean(finalPath)); err == nil {
+		mode = info.Mode().Perm()
 	}
 	f, err := os.CreateTemp(dir, base+".tmp*")
 	if err != nil {
+		return "", err
+	}
+	if err := f.Chmod(mode); err != nil {
+		_ = f.Close()
+		_ = os.Remove(f.Name())
 		return "", err
 	}
 	if _, err := f.Write(data); err != nil {

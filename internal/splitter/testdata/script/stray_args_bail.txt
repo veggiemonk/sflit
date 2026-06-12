@@ -1,0 +1,14 @@
+# Arguments after the first positional are rejected, not silently dropped:
+# Go flag parsing stops at the first non-flag argument, so a stray arg
+# would otherwise swallow the trailing -move and perform a copy.
+! exec sflit -source a.go -sink b.go -regex '^Filter' stray.go -move
+stderr 'unexpected argument'
+! exists b.go
+grep 'func FilterA' a.go
+
+-- a.go --
+package p
+
+func FilterA() {}
+
+func Other() {}

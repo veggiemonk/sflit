@@ -38,7 +38,7 @@ func toolSchemaJSON() []byte {
 				},
 				"retries": map[string]any{
 					"type":        "integer",
-					"description": "Max re-runs after a concurrent-write conflict (another process changed source or sink between parse and commit). Rarely needs changing.",
+					"description": "Max re-runs after a concurrent-write conflict (another process changed source or sink between parse and commit). 0 or negative uses the default; retry cannot be disabled. Rarely needs changing — fanning out more than ~16 concurrent movers on one file needs retries >= N.",
 					"default":     defaultRetries,
 				},
 				"debug": map[string]any{

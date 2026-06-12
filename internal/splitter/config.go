@@ -18,9 +18,9 @@ type Config struct {
 	Move     bool
 	// Retries bounds how many times Run re-runs the pipeline after a
 	// commit-time conflict (a concurrent writer changed source or sink
-	// between parse and commit). 0 means the default of 5; conflicts are
-	// the expected mechanism under parallel invocations (ADR-0001), so
-	// retry cannot be disabled.
+	// between parse and commit). 0 or negative means the default of 16;
+	// conflicts are the expected mechanism under parallel invocations
+	// (ADR-0001), so retry cannot be disabled.
 	Retries int
 
 	// testHookBeforeCommit, when set, runs between render and commit on
@@ -28,8 +28,12 @@ type Config struct {
 	testHookBeforeCommit func()
 }
 
-// defaultRetries is the retry bound applied when Config.Retries is zero.
-const defaultRetries = 5
+// defaultRetries is the retry bound applied when Config.Retries is zero or
+// negative. Under N-way contention on one source the unluckiest run needs
+// up to ~N attempts (every conflict implies another run committed), and
+// ADR-0001's own fan-out experiment used 11 concurrent movers — 16 covers
+// that with headroom, and each attempt costs milliseconds.
+const defaultRetries = 16
 
 // retries returns the effective conflict-retry bound.
 func (c Config) retries() int {

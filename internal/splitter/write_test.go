@@ -428,3 +428,69 @@ func TestCommitSingle_Clean(t *testing.T) {
 		t.Fatalf("sink: %q", got)
 	}
 }
+
+// TestCommit_PreservesFileModes pins the commit atom's identity contract:
+// temp+rename must not replace a file's permission bits with os.CreateTemp's
+// 0600, and a new sink must get a regular 0644, not a private file.
+func TestCommit_PreservesFileModes(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.go")
+	b := filepath.Join(dir, "b.go")
+	writeFile(t, a, "package p\n\nfunc Foo() {}\n\nfunc Bar() {}\n")
+	if err := os.Chmod(a, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(Config{Source: a, Sink: b, Regex: "^Foo$", Move: true}); err != nil {
+		t.Fatal(err)
+	}
+	for path, want := range map[string]os.FileMode{a: 0o644, b: 0o644} {
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := info.Mode().Perm(); got != want {
+			t.Errorf("%s mode = %o, want %o", filepath.Base(path), got, want)
+		}
+	}
+
+	// A pre-existing sink keeps its own mode on rewrite.
+	c := filepath.Join(dir, "c.go")
+	writeFile(t, c, "package p\n\nfunc Existing() {}\n")
+	if err := os.Chmod(c, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(Config{Source: b, Sink: c, Regex: "^Foo$", Move: true}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(c)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Errorf("pre-existing sink mode = %o, want it preserved as 600", got)
+	}
+}
+
+// TestCommit_NewDirGroupTraversable pins that directories created for a new
+// sink are usable: group read without group execute (the old 0o740) lets the
+// group list the directory but not stat or open anything inside it.
+func TestCommit_NewDirGroupTraversable(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.go")
+	b := filepath.Join(dir, "sub", "b.go")
+	writeFile(t, a, "package p\n\nfunc Foo() {}\n\nfunc Bar() {}\n")
+	if _, err := Run(Config{Source: a, Sink: b, Regex: "^Foo$", Move: true}); err != nil {
+		t.Fatal(err)
+	}
+	info, err := os.Stat(filepath.Dir(b))
+	if err != nil {
+		t.Fatal(err)
+	}
+	perm := info.Mode().Perm()
+	if perm&0o700 != 0o700 {
+		t.Errorf("dir mode = %o: owner must keep rwx", perm)
+	}
+	if perm&0o040 != 0 && perm&0o010 == 0 {
+		t.Errorf("dir mode = %o: group can read the listing but not traverse", perm)
+	}
+}

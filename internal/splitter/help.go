@@ -17,7 +17,10 @@ Flags:
   -regex     string  Regex matched against declaration names
   -receiver  string  Receiver type name
   -move              Delete matched decls from source after writing (default: copy)
-  -retries   int     Max re-runs after a concurrent-write conflict (default: 5)
+  -retries   int     Max re-runs after a concurrent-write conflict
+                     (default: 16; 0 or negative uses the default — retry
+                     cannot be disabled). Fanning out more than ~16
+                     concurrent movers on one file needs -retries >= N.
   -json              Print structured JSON result to stdout
   -debug             Print debug logs to stderr
 

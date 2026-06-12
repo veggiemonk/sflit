@@ -64,7 +64,7 @@ func TestConcurrentFanOut(t *testing.T) {
 				Move:   true,
 				// Worst case every commit invalidates all in-flight
 				// runs, so rounds can reach len(groups); leave headroom
-				// over the default bound of 5.
+				// over the default bound.
 				Retries: 4 * len(groups),
 				testHookBeforeCommit: func() {
 					if firstAttempt {

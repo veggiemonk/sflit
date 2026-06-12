@@ -62,7 +62,9 @@ commit window**, plus bounded retry. Three pieces:
    section is a re-read/hash plus two renames — microseconds — so contention
    exists in name only.
 3. **Retry on conflict.** On hash mismatch, re-run the whole pipeline against
-   the fresh content, bounded (default 5 attempts). Because selection is
+   the fresh content, bounded (default 16 retries, i.e. up to 17 attempts;
+   under N-way contention the unluckiest run needs ~N attempts, and the
+   fan-out experiment below used 11 movers). Because selection is
    semantic, this converges: disjoint selections commute and both succeed;
    overlapping selections resolve to "no matches" or a sink collision on the
    later run — both already-defined exit-1 paths. The CLI surface is unchanged
@@ -209,7 +211,8 @@ Harder / costs:
   sorted-path two-lock scheme needs generalizing — re-examine whether a single
   per-directory lock is simpler than N ordered locks.
 - If conflict retries are observed exhausting the bound in real agent runs
-  (exit-1 "source changed" after 5 attempts), reconsider serializing the whole
+  (exit-1 "source changed" after the retry bound, default 16 retries = 17
+  attempts), reconsider serializing the whole
   run per directory (Option B semantics) instead of raising the retry count.
 - If sflit ever runs against files on NFS, `flock` semantics degrade —
   revisit with `fcntl`-style locks or require local filesystems explicitly.

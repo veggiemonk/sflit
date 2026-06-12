@@ -181,7 +181,7 @@ func cliFlagSet(stderr io.Writer, cfg *Config, jsonOutput, debug *bool) *flag.Fl
 	fs.StringVar(&cfg.Regex, "regex", "", "name regex")
 	fs.StringVar(&cfg.Receiver, "receiver", "", "receiver type name")
 	fs.BoolVar(&cfg.Move, "move", false, "delete matched decls from source")
-	fs.IntVar(&cfg.Retries, "retries", defaultRetries, "max re-runs after a concurrent-write conflict")
+	fs.IntVar(&cfg.Retries, "retries", defaultRetries, "max re-runs after a concurrent-write conflict (0 or negative uses the default)")
 	fs.BoolVar(jsonOutput, "json", false, "print structured JSON result to stdout")
 	fs.BoolVar(debug, "debug", false, "print debug logs to stderr")
 	return fs
@@ -214,6 +214,17 @@ func RunCLI(args []string, _ io.Reader, stdout io.Writer, stderr io.Writer) int 
 	var debug bool
 	fs := cliFlagSet(stderr, &cfg, &jsonOutput, &debug)
 	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	// Go's flag package stops parsing at the first non-flag argument, so a
+	// stray positional silently swallows every argument after it — including
+	// a trailing -move, turning the requested move into a copy with exit 0.
+	if fs.NArg() > 0 {
+		_, _ = fmt.Fprintf(
+			stderr,
+			"sflit: unexpected arguments: %q (flags after the first positional argument are ignored by Go flag parsing)\n",
+			fs.Args(),
+		)
 		return 2
 	}
 	if debug {

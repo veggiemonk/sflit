@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -200,5 +201,30 @@ func TestHelpListsAllVersionFlags(t *testing.T) {
 		if !re.MatchString(helpText) {
 			t.Fatalf("helpText missing distinct token %q", want)
 		}
+	}
+}
+
+// TestRunCLI_StrayArgsRejected pins that arguments after the first
+// positional are not silently dropped: Go's flag package stops parsing at
+// the first non-flag argument, so a stray arg used to swallow a trailing
+// -move and turn the requested move into a copy with exit 0.
+func TestRunCLI_StrayArgsRejected(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.go")
+	b := filepath.Join(dir, "b.go")
+	writeFileForCLITest(t, a, "package p\n\nfunc FilterA() {}\n\nfunc Other() {}\n")
+	var stdout, stderr bytes.Buffer
+	got := RunCLI(
+		[]string{"-source", a, "-sink", b, "-regex", "^Filter", "stray.go", "-move"},
+		nil, &stdout, &stderr,
+	)
+	if got != 2 {
+		t.Fatalf("exit code = %d, want 2; stderr:\n%s", got, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "unexpected argument") {
+		t.Fatalf("stderr = %q, want unexpected-arguments error", stderr.String())
+	}
+	if _, err := os.Stat(b); !os.IsNotExist(err) {
+		t.Fatalf("sink was written despite the usage error (stray args silently dropped)")
 	}
 }
