@@ -14,15 +14,9 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-      - name: Run golangci-lint
+      - name: install golangci-lint
         uses: golangci/golangci-lint-action@82606bf257cbaff209d206a39f5134f0cfbfd2ee # ratchet:golangci/golangci-lint-action@v9
         with:
+          install-only: true
           version: latest
-      - name: README embed drift (make doc must be committed)
-        run: |
-          make doc
-          git diff --exit-code README.md
-      # Drift first fails fast on the cheap gate, but it must not mask test
-      # failures for a round trip: run the full check even when drift fails.
-      - run: make check
-        if: always()
+      - run: make check && git diff --exit-code

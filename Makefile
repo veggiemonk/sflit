@@ -7,7 +7,7 @@ LDFLAGS := -s -w
 
 .PHONY: check build install test lint vet vuln fix clean help
 
-check: lint vuln test build ## Run lint, vuln, test, build
+check: lint vuln test build doc ## Run lint, vuln, test, build and doc
 
 build: ## Build the binary
 	go build $(GOFLAGS) -ldflags '$(LDFLAGS)' -o $(BINARY) .
