@@ -19,3 +19,7 @@ jobs:
         with:
           version: latest
       - run: make check
+      - name: README embed drift (make doc must be committed)
+        run: |
+          make doc
+          git diff --exit-code README.md

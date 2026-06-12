@@ -44,7 +44,7 @@ clean: ## Remove build artifacts
 
 doc: ## update README.md
 	go run . --help > TOOL.md 2>&1
-	embedmd -w README.md
+	go tool embedmd -w README.md
 	rm -f TOOL.md
 
 help: ## Show this help

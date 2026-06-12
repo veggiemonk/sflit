@@ -10,6 +10,7 @@ require (
 
 require (
 	github.com/braydonk/yaml v0.9.0 // indirect
+	github.com/campoy/embedmd v1.0.0 // indirect
 	github.com/containerd/stargz-snapshotter/estargz v0.16.3 // indirect
 	github.com/docker/cli v28.3.0+incompatible // indirect
 	github.com/docker/distribution v2.8.3+incompatible // indirect
@@ -22,6 +23,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sethvargo/ratchet v0.11.4 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/vbatts/tar-split v0.12.1 // indirect
@@ -33,6 +35,7 @@ require (
 )
 
 tool (
+	github.com/campoy/embedmd
 	github.com/sethvargo/ratchet
 	golang.org/x/vuln/cmd/govulncheck
 )

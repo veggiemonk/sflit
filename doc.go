@@ -36,9 +36,13 @@
 //	# Move only methods of a type matching a regex (type stays)
 //	sflit -source big.go -receiver MyStruct -regex '^Filter' -sink my_struct_filter.go -move
 //
-// Exit codes: 0 success, 1 operation error (collision, package mismatch,
-// same-directory copy, build-constraint mismatch, generated/cgo/dot-import
-// source, parse error, no matches, write error), 2 flag/usage error.
+// Concurrent invocations on the same files are safe with no external
+// coordination: each run verifies pre-image hashes under a short per-file
+// lock at commit and re-runs on conflict, bounded by -retries (ADR-0001).
+//
+// Exit codes: 0 success, 1 operation error, 2 flag/usage error. Run
+// "sflit -h" for the authoritative list of exit-1 causes and blocked
+// operations.
 //
 // See [github.com/veggiemonk/sflit/internal/splitter] for the internal API.
 package main

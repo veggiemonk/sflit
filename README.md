@@ -85,7 +85,10 @@ Flags:
   -regex     string  Regex matched against declaration names
   -receiver  string  Receiver type name
   -move              Delete matched decls from source after writing (default: copy)
-  -retries   int     Max re-runs after a concurrent-write conflict (default: 5)
+  -retries   int     Max re-runs after a concurrent-write conflict
+                     (default: 16; 0 or negative uses the default — retry
+                     cannot be disabled). Fanning out more than ~16
+                     concurrent movers on one file needs -retries >= N.
   -json              Print structured JSON result to stdout
   -debug             Print debug logs to stderr
 
@@ -107,10 +110,18 @@ Blocked splits (copy and move alike):
     rejected; select the whole block or refactor constants manually first.
   - Partial splits of multi-name var/const specs are rejected unless each
     name has a corresponding explicit value.
-  - Generated source files are rejected.
+  - Generated files are rejected, as source or as existing sink: generated
+    files should be changed at the generator source.
   - Files with build constraints can only move into sinks with identical
     build constraints.
-  - Files using cgo import "C" or dot imports are rejected.
+  - Source files using cgo import "C" are rejected.
+  - Dot imports are rejected in both source and sink: they obscure
+    dependencies and defeat collision detection.
+  - Declarations carrying //go:embed or //go:linkname cannot move or copy
+    into a different directory: embed patterns are directory-relative and
+    linkname binds a symbol of the source package. Same-directory moves
+    carry the directive's required blank import (_ "embed" / _ "unsafe")
+    into the sink.
   - Copying (without -move) into a sink in the source's own directory is
     rejected: the source keeps the declarations, so the package would gain
     duplicates and stop compiling. Use -move, or copy into a different
