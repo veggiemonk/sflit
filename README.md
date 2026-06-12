@@ -115,6 +115,14 @@ Blocked splits (copy and move alike):
     rejected: the source keeps the declarations, so the package would gain
     duplicates and stop compiling. Use -move, or copy into a different
     directory.
+  - Splits into a different directory (a different package) are rejected
+    when a moved declaration references a top-level name that stays behind
+    in the source file, or a remaining declaration references a name that
+    moves away: either file would stop compiling. Move the declarations
+    together or refactor first. (File-local check: references involving
+    sibling files of the source are not seen.)
+  - Splits into a sink that imports a different path under an alias the
+    source also uses are rejected; rename one of the imports first.
 
 Concurrency:
   Safe to fan out N concurrent invocations on the same files with no
