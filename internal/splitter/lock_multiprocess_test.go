@@ -140,7 +140,12 @@ func TestLockNoCrossProcessDeadlock(t *testing.T) {
 	}
 	for _, cmd := range []*exec.Cmd{fromA, fromB} {
 		if err := cmd.Wait(); err != nil {
-			t.Fatalf("sflit-lockstress from %s: %v (ctx err: %v — deadline means deadlock)", cmd.Dir, err, ctx.Err())
+			t.Fatalf(
+				"sflit-lockstress from %s: %v (ctx err: %v — deadline means deadlock)",
+				cmd.Dir,
+				err,
+				ctx.Err(),
+			)
 		}
 	}
 }

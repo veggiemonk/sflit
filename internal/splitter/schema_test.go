@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -72,7 +73,7 @@ func TestToolSchema_DefaultsMatchFlagSet(t *testing.T) {
 	}
 
 	retries := props["retries"].(map[string]any)
-	if got := fmt.Sprint(retries["default"]); got != fmt.Sprint(defaultRetries) {
+	if got := fmt.Sprint(retries["default"]); got != strconv.Itoa(defaultRetries) {
 		t.Errorf("schema retries.default = %v, defaultRetries = %d", retries["default"], defaultRetries)
 	}
 }

@@ -91,7 +91,11 @@ func TestConcurrentFanOut(t *testing.T) {
 		}
 	}
 	if want := len(groups) - 1; contended < want {
-		t.Errorf("only %d runs observed a conflict, want >= %d — the optimistic-concurrency path was not exercised", contended, want)
+		t.Errorf(
+			"only %d runs observed a conflict, want >= %d — the optimistic-concurrency path was not exercised",
+			contended,
+			want,
+		)
 	}
 
 	entries, err := os.ReadDir(dir)
@@ -306,7 +310,11 @@ func TestCommitBlocksOnHeldLock(t *testing.T) {
 func TestRunGaveUpReportsAttempts(t *testing.T) {
 	dir := t.TempDir()
 	src := filepath.Join(dir, "big.go")
-	if err := os.WriteFile(src, []byte("package foo\n\nfunc FilterA() int { return 0 }\n\nfunc Other() int { return 2 }\n"), 0o600); err != nil {
+	if err := os.WriteFile(
+		src,
+		[]byte("package foo\n\nfunc FilterA() int { return 0 }\n\nfunc Other() int { return 2 }\n"),
+		0o600,
+	); err != nil {
 		t.Fatal(err)
 	}
 
@@ -319,7 +327,10 @@ func TestRunGaveUpReportsAttempts(t *testing.T) {
 		Retries: 1,
 		testHookBeforeCommit: func() {
 			n++
-			content := fmt.Sprintf("package foo\n\nfunc FilterA() int { return %d }\n\nfunc Other() int { return 2 }\n", n)
+			content := fmt.Sprintf(
+				"package foo\n\nfunc FilterA() int { return %d }\n\nfunc Other() int { return 2 }\n",
+				n,
+			)
 			if werr := os.WriteFile(src, []byte(content), 0o600); werr != nil {
 				t.Error(werr)
 			}

@@ -26,7 +26,10 @@ var Data string
 	plan := buildPlan(fset, nil, "src.go", filepath.Join("otherdir", "sink.go"), src, nil, ex, true)
 	err := validatePlan(plan, nil, src)
 	if err == nil || !strings.Contains(err.Error(), "go:embed") {
-		t.Fatalf("want //go:embed cross-directory rejection (embed patterns are directory-relative), got %v", err)
+		t.Fatalf(
+			"want //go:embed cross-directory rejection (embed patterns are directory-relative), got %v",
+			err,
+		)
 	}
 }
 

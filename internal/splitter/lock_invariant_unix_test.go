@@ -46,12 +46,17 @@ func TestReleaseUnlinksBeforeFunlock(t *testing.T) {
 	testHookBetweenUnlinkAndFunlock = func() {
 		hookRan = true
 		if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
-			t.Errorf("sidecar still present between unlink and funlock: stat err = %v (unlink must precede funlock)", err)
+			t.Errorf(
+				"sidecar still present between unlink and funlock: stat err = %v (unlink must precede funlock)",
+				err,
+			)
 		}
 		err := syscall.Flock(int(probe.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
 		if err == nil {
 			_ = syscall.Flock(int(probe.Fd()), syscall.LOCK_UN)
-			t.Error("non-blocking flock succeeded between unlink and funlock: lock was released before the unlink")
+			t.Error(
+				"non-blocking flock succeeded between unlink and funlock: lock was released before the unlink",
+			)
 		} else if !errors.Is(err, syscall.EWOULDBLOCK) && !errors.Is(err, syscall.EAGAIN) {
 			t.Errorf("probe flock: got %v, want EWOULDBLOCK", err)
 		}

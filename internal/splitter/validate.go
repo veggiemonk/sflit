@@ -162,7 +162,8 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 	} else if generated {
 		return fmt.Errorf(
 			"cannot %s declarations out of generated file %s: generated files should be changed at the generator source",
-			plan.opVerb(), plan.SrcPath,
+			plan.opVerb(),
+			plan.SrcPath,
 		)
 	}
 	if fileImportsC(origSrc) {
@@ -174,7 +175,8 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 	if fileHasDotImport(origSrc) {
 		return fmt.Errorf(
 			"cannot %s declarations out of %s: source has dot imports, which obscure dependencies; refactor to qualified imports first",
-			plan.opVerb(), plan.SrcPath,
+			plan.opVerb(),
+			plan.SrcPath,
 		)
 	}
 	// Sink-side mirrors of the file-class guards above: appending to a
@@ -255,12 +257,14 @@ func validateDirectives(plan Plan) error {
 	if embed {
 		return fmt.Errorf(
 			"cannot %s declarations carrying //go:embed into a different directory %s: embed patterns are directory-relative, so the embedded files would silently change; move within the source directory or relocate the embedded files first",
-			plan.opVerb(), plan.SinkPath,
+			plan.opVerb(),
+			plan.SinkPath,
 		)
 	}
 	return fmt.Errorf(
 		"cannot %s declarations carrying //go:linkname into a different directory %s: the directive binds a symbol of the source package; move within the source directory or refactor first",
-		plan.opVerb(), plan.SinkPath,
+		plan.opVerb(),
+		plan.SinkPath,
 	)
 }
 
@@ -311,7 +315,11 @@ func validateImportAliases(plan Plan, origSink, origSrc *ast.File) error {
 		if sinkPath, ok := sinkPaths[name]; ok && sinkPath != path {
 			return fmt.Errorf(
 				"cannot write to %s: source %s imports %q as %s but the sink imports %q under the same alias; rename one of the imports first",
-				plan.SinkPath, plan.SrcPath, path, name, sinkPath,
+				plan.SinkPath,
+				plan.SrcPath,
+				path,
+				name,
+				sinkPath,
 			)
 		}
 	}
@@ -444,8 +452,11 @@ func validateNoStrandedRefs(plan Plan) error {
 		if stranded := refs(e.Decl, false); len(stranded) > 0 {
 			return fmt.Errorf(
 				"cannot %s declarations from %s into a different directory %s: %s references %s, which stays behind in the source package; move them together or refactor first",
-				plan.opVerb(), plan.SrcPath, plan.SinkPath,
-				strings.Join(declKeys(e.Decl), ", "), strings.Join(stranded, ", "),
+				plan.opVerb(),
+				plan.SrcPath,
+				plan.SinkPath,
+				strings.Join(declKeys(e.Decl), ", "),
+				strings.Join(stranded, ", "),
 			)
 		}
 	}
@@ -459,8 +470,10 @@ func validateNoStrandedRefs(plan Plan) error {
 		if away := refs(n, true); len(away) > 0 {
 			return fmt.Errorf(
 				"cannot move out of %s into different directory %s: remaining declaration %s references %s, which would move away; move them together or refactor first",
-				plan.SrcPath, plan.SinkPath,
-				strings.Join(keys, ", "), strings.Join(away, ", "),
+				plan.SrcPath,
+				plan.SinkPath,
+				strings.Join(keys, ", "),
+				strings.Join(away, ", "),
 			)
 		}
 		return nil

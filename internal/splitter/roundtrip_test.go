@@ -155,7 +155,9 @@ func Other() { f.Println("o") }
 	typeCheckDir(t, dir)
 	typeCheckDir(t, sub)
 	if err := SemEqual(
-		[]string{"package p\n\nimport f \"fmt\"\n\n// FilterA prints a.\nfunc FilterA() { f.Println(\"a\") }\n"},
+		[]string{
+			"package p\n\nimport f \"fmt\"\n\n// FilterA prints a.\nfunc FilterA() { f.Println(\"a\") }\n",
+		},
 		[]string{readBack(t, b)},
 	); err != nil {
 		t.Fatalf("sink content: %v", err)
@@ -234,7 +236,10 @@ func Other() int { return stays }
 		t.Fatal("DocA not in sink")
 	}
 	if doca.Doc == nil || !strings.Contains(doca.Doc.Text(), "DocA documents DocA") {
-		t.Fatalf("DocA lost its doc comment in the sink (decls rendered out of position order); sink:\n%s", readBack(t, b))
+		t.Fatalf(
+			"DocA lost its doc comment in the sink (decls rendered out of position order); sink:\n%s",
+			readBack(t, b),
+		)
 	}
 	if err := TypeCheckFiles(a, b); err != nil {
 		t.Fatal(err)

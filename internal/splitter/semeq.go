@@ -53,12 +53,23 @@ func SemEqual(before, after []string) error {
 	for _, k := range keys {
 		bt, at := b[k], a[k]
 		if len(bt) != len(at) {
-			diffs = append(diffs, fmt.Sprintf("%s: declared %d time(s) before, %d time(s) after", k, len(bt), len(at)))
+			diffs = append(
+				diffs,
+				fmt.Sprintf("%s: declared %d time(s) before, %d time(s) after", k, len(bt), len(at)),
+			)
 			continue
 		}
 		for i := range bt {
 			if bt[i] != at[i] {
-				diffs = append(diffs, fmt.Sprintf("%s: declaration text differs\n-- before --\n%s\n-- after --\n%s", k, bt[i], at[i]))
+				diffs = append(
+					diffs,
+					fmt.Sprintf(
+						"%s: declaration text differs\n-- before --\n%s\n-- after --\n%s",
+						k,
+						bt[i],
+						at[i],
+					),
+				)
 				break
 			}
 		}

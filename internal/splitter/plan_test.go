@@ -169,7 +169,12 @@ var (
 	last := token.NoPos
 	for i, d := range plan.MovedFile.Decls {
 		if d.Pos() < last {
-			t.Fatalf("MovedFile.Decls[%d] at %v precedes its predecessor at %v: decls out of source position order", i, d.Pos(), last)
+			t.Fatalf(
+				"MovedFile.Decls[%d] at %v precedes its predecessor at %v: decls out of source position order",
+				i,
+				d.Pos(),
+				last,
+			)
 		}
 		last = d.Pos()
 	}

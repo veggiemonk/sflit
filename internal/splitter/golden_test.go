@@ -43,7 +43,12 @@ func checkGolden(t *testing.T, name string, got []byte) {
 		t.Fatalf("read golden (run with -update to create): %v", err)
 	}
 	if !bytes.Equal(got, want) {
-		t.Errorf("output drifted from %s — intentional changes need -update\ngot:\n%s\nwant:\n%s", name, got, want)
+		t.Errorf(
+			"output drifted from %s — intentional changes need -update\ngot:\n%s\nwant:\n%s",
+			name,
+			got,
+			want,
+		)
 	}
 }
 
@@ -68,7 +73,12 @@ func TestGoldenJSONMove(t *testing.T) {
 	t.Chdir(dir)
 
 	var stdout, stderr bytes.Buffer
-	code := RunCLI([]string{"-source", "big.go", "-sink", "filter.go", "-regex", "^Filter", "-move", "-json"}, nil, &stdout, &stderr)
+	code := RunCLI(
+		[]string{"-source", "big.go", "-sink", "filter.go", "-regex", "^Filter", "-move", "-json"},
+		nil,
+		&stdout,
+		&stderr,
+	)
 	if code != 0 {
 		t.Fatalf("exit %d, stderr:\n%s", code, stderr.String())
 	}

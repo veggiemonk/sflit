@@ -272,5 +272,8 @@ func Moved() {}
 			return
 		}
 	}
-	t.Fatalf("doc comment did not travel with Moved: //line-adjusted positions used for layout; LeadComms = %v", ex[0].LeadComms)
+	t.Fatalf(
+		"doc comment did not travel with Moved: //line-adjusted positions used for layout; LeadComms = %v",
+		ex[0].LeadComms,
+	)
 }

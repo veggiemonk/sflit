@@ -10,12 +10,17 @@ import (
 
 // Config holds the parameters for a single splitter run.
 type Config struct {
-	Logger   *slog.Logger
+	Logger *slog.Logger
+
+	// testHookBeforeCommit, when set, runs between render and commit on
+	// every attempt. Test-only seam for injecting mid-flight writers.
+	testHookBeforeCommit func()
+
 	Source   string
 	Sink     string
 	Regex    string
 	Receiver string
-	Move     bool
+
 	// Retries bounds how many times Run re-runs the pipeline after a
 	// commit-time conflict (a concurrent writer changed source or sink
 	// between parse and commit). 0 or negative means the default of 16;
@@ -23,9 +28,7 @@ type Config struct {
 	// (ADR-0001), so retry cannot be disabled.
 	Retries int
 
-	// testHookBeforeCommit, when set, runs between render and commit on
-	// every attempt. Test-only seam for injecting mid-flight writers.
-	testHookBeforeCommit func()
+	Move bool
 }
 
 // defaultRetries is the retry bound applied when Config.Retries is zero or

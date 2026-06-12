@@ -72,6 +72,9 @@ func TestConfigValidate(t *testing.T) {
 // experiment used 11 sinks. The default must cover that without -retries.
 func TestDefaultRetriesCoversFanOut(t *testing.T) {
 	if defaultRetries < 11 {
-		t.Fatalf("defaultRetries = %d: cannot cover ADR-0001's own 11-sink fan-out without a -retries override", defaultRetries)
+		t.Fatalf(
+			"defaultRetries = %d: cannot cover ADR-0001's own 11-sink fan-out without a -retries override",
+			defaultRetries,
+		)
 	}
 }

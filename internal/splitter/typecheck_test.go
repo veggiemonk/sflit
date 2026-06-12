@@ -1,6 +1,7 @@
 package splitter
 
 import (
+	"errors"
 	"fmt"
 	"go/ast"
 	"go/importer"
@@ -21,7 +22,7 @@ import (
 // testscript package can expose it as the `gotypecheck` script command.
 func TypeCheckFiles(paths ...string) error {
 	if len(paths) == 0 {
-		return fmt.Errorf("typecheck: no Go files")
+		return errors.New("typecheck: no Go files")
 	}
 	fset := token.NewFileSet()
 	files := make([]*ast.File, 0, len(paths))

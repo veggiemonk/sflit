@@ -25,7 +25,11 @@ func TestGlossary_NoForbiddenPhrasing(t *testing.T) {
 		}
 		for _, phrase := range forbidden {
 			if strings.Contains(string(data), phrase) {
-				t.Errorf("%s uses forbidden glossary phrasing %q: operations are move/copy, partial group selection is narrowing", file, phrase)
+				t.Errorf(
+					"%s uses forbidden glossary phrasing %q: operations are move/copy, partial group selection is narrowing",
+					file,
+					phrase,
+				)
 			}
 		}
 	}

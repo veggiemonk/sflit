@@ -85,8 +85,8 @@ func TestValidate_StrandedRefs(t *testing.T) {
 		src     string
 		regex   string
 		sink    string
-		move    bool
 		wantErr string // empty = valid
+		move    bool
 	}{
 		{
 			name:    "moved func references staying helper",
