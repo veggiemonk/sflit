@@ -44,5 +44,5 @@
 // "sflit -h" for the authoritative list of exit-1 causes and blocked
 // operations.
 //
-// See [github.com/veggiemonk/sflit/internal/splitter] for the internal API.
+// See [github.com/veggiemonk/sflit/internal/mover] for the internal API.
 package main

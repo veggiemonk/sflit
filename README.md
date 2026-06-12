@@ -191,7 +191,7 @@ LLM tool-use loops. Pipe it straight into your agent's tool registry:
 sflit --tool-schema | jq .
 ```
 
-See [`internal/splitter/schema.go`](internal/splitter/schema.go) for the
+See [`internal/mover/schema.go`](internal/mover/schema.go) for the
 schema source.
 
 ### Guarantees

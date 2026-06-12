@@ -13,7 +13,7 @@ source pre-image verified lock-free (see Amendment 2).
 sflit exists for agents: an orchestrator splitting a 5000-line file fans out
 subagents, each running `sflit -source big.go -sink <topic>.go -regex <R> -move`.
 Today each invocation is an unguarded read–modify–write: parse source → select →
-render → temp-file + rename (`internal/splitter/write.go`). The temp+rename makes
+render → temp-file + rename (`internal/mover/write.go`). The temp+rename makes
 each write **crash-safe** but nothing makes concurrent runs **isolation-safe** —
 last writer wins.
 
@@ -74,7 +74,7 @@ commit window**, plus bounded retry. Three pieces:
 Implementation seams: `parse.go` (parse-from-bytes + hash), `write.go` (the
 commit seam — one `commit` type owning the lock–verify–rename atom for both
 `writePair` and `writeSingle`), and a retry loop wrapping the body of `Run` in
-`splitter.go`. Platform lock code lives in `lock_unix.go` / `lock_windows.go`
+`mover.go`. Platform lock code lives in `lock_unix.go` / `lock_windows.go`
 (`syscall.Flock` / `LockFileEx`), copied (~40 lines, with attribution) from
 [gofrs/flock](https://github.com/gofrs/flock) rather than imported.
 
@@ -235,7 +235,7 @@ directories).
 
 Decision: `commit.lockAll` locks only `commit.snaps`; the source pre-image
 is moved to a new `commit.verifyOnly` slice that `commit.verify` checks
-lock-free. `runOnce` in `splitter.go` populates `verifyOnly` with `srcSnap`
+lock-free. `runOnce` in `mover.go` populates `verifyOnly` with `srcSnap`
 and `snaps` with only `sinkSnap` when `!cfg.Move`.
 
 Serializability argument: the lock guards the verify→rename pair to prevent

@@ -76,6 +76,7 @@ identifiers.
 - Instructions always say move or copy, never "split X into Y."
 - A partially selected grouped block is **narrowed**, never split — **split** is file-level only.
 - A move back is a **reversal**, never an undo — sflit keeps no history or state to undo from.
+- In code, the pipeline package is `internal/mover` (sflit is a declaration mover, split and merge its two directions) and its staged single operation is `renderOp` — never `plan`: that word is reserved for the proposed **Plan mode** batch input.
 
 ## Example dialogue
 
