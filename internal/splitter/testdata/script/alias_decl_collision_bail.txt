@@ -1,0 +1,21 @@
+# Source imports "fmt" as f; sink declares var f at package level.
+# Expect: non-zero exit, stderr names the alias, files unchanged.
+cp src.go src_before.go
+cp sink/sink.go sink_before.go
+! exec sflit -source src.go -sink sink/sink.go -regex '^Foo$' -move
+stderr 'package level'
+cmp src.go src_before.go
+cmp sink/sink.go sink_before.go
+
+-- src.go --
+package p
+
+import f "fmt"
+
+func Foo() { f.Println("hello") }
+-- sink/sink.go --
+package p
+
+var f = 1
+
+func Bar() {}

@@ -37,6 +37,8 @@ func parseGoFile(path string) (*token.FileSet, *ast.File, fileSnapshot, error) {
 		return nil, nil, fileSnapshot{}, fmt.Errorf("read %s: %w", path, err)
 	}
 	fset := token.NewFileSet()
+	// validateNoStrandedRefs depends on ast.Object resolution for reference
+	// tracking. parser.SkipObjectResolution must NOT be added to this mode.
 	file, err := parser.ParseFile(fset, path, src, parser.ParseComments)
 	if err != nil {
 		return nil, nil, fileSnapshot{}, fmt.Errorf("parse %s: %w", path, err)

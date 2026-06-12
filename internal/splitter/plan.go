@@ -134,6 +134,8 @@ func (p *Plan) applyMove() {
 	}
 	dropDecls := make(map[ast.Decl]bool, len(p.extracted))
 	dropSpecs := make(map[ast.Spec]bool)
+	// dropNames is index-based (not name-based) because trimValueSpec must
+	// align Values slices by position, not by identifier string.
 	dropNames := make(map[*ast.ValueSpec]map[int]bool)
 	editedGroups := make(map[*ast.GenDecl]bool)
 	consumed := make(map[*ast.CommentGroup]bool)
@@ -194,6 +196,48 @@ func (p *Plan) applyMove() {
 		}
 		p.SrcFile.Comments = kept
 	}
+}
+
+// travelSet returns the set of declarations/specs that travel with the
+// selection and the per-ValueSpec name maps for narrowed specs.
+// Used by validateNoStrandedRefs for reference-tracking at the spec level.
+//
+// Classification rules:
+//   - e.Origin == nil, non-GenDecl: the whole FuncDecl travels
+//   - e.Origin == nil, GenDecl: each spec in the group travels individually
+//     (spec-level granularity, unlike applyMove which drops the whole GenDecl)
+//   - e.Origin.Names == nil: whole spec travels
+//   - otherwise: only named indices of a ValueSpec travel (narrowed match)
+func (p Plan) travelSet() (travelling map[any]bool, travellingNames map[*ast.ValueSpec]map[string]bool) {
+	travelling = make(map[any]bool, len(p.extracted))
+	travellingNames = make(map[*ast.ValueSpec]map[string]bool)
+	for _, e := range p.extracted {
+		o := e.Origin
+		switch {
+		case o == nil:
+			if gd, ok := e.Decl.(*ast.GenDecl); ok {
+				for _, s := range gd.Specs {
+					travelling[s] = true
+				}
+				continue
+			}
+			travelling[e.Decl] = true
+		case o.Names == nil:
+			travelling[o.Spec] = true
+		default:
+			vs, ok := o.Spec.(*ast.ValueSpec)
+			if !ok {
+				continue
+			}
+			if travellingNames[vs] == nil {
+				travellingNames[vs] = make(map[string]bool, len(o.Names))
+			}
+			for _, j := range o.Names {
+				travellingNames[vs][vs.Names[j].Name] = true
+			}
+		}
+	}
+	return travelling, travellingNames
 }
 
 // trimValueSpec removes the names at the given indices from vs, keeping

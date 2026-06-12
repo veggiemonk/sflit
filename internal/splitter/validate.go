@@ -140,67 +140,78 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 			plan.SinkPath, origSink.Name.Name, plan.SrcPath, origSrc.Name.Name,
 		)
 	}
+	// Compute sameDir once; used for the copy guard below and threaded into
+	// validateDirectives and validateNoStrandedRefs to avoid redundant calls.
+	same, err := sameDir(plan.SrcPath, plan.SinkPath)
+	if err != nil {
+		return err
+	}
 	// Same-directory copy: the source keeps every selected declaration, so a
 	// sink in the same directory (same package) would gain duplicates and the
 	// package would no longer compile. Copying is only valid into a different
 	// directory (same package name, different package).
-	if !plan.Move {
-		same, err := sameDir(plan.SrcPath, plan.SinkPath)
-		if err != nil {
-			return err
-		}
-		if same {
-			return fmt.Errorf(
-				"cannot copy within the same directory: source %s and sink %s are in the same package, so the copied declarations would duplicate the originals and the package would no longer compile; use -move to move them, or copy into a different directory",
-				plan.SrcPath,
-				plan.SinkPath,
-			)
-		}
-	}
-	if generated, err := isGeneratedFile(plan.SrcPath); err != nil {
-		return err
-	} else if generated {
+	if !plan.Move && same {
 		return fmt.Errorf(
-			"cannot %s declarations out of generated file %s: generated files should be changed at the generator source",
-			plan.opVerb(),
+			"cannot copy within the same directory: source %s and sink %s are in the same package, so the copied declarations would duplicate the originals and the package would no longer compile; use -move to move them, or copy into a different directory",
 			plan.SrcPath,
-		)
-	}
-	if fileImportsC(origSrc) {
-		return fmt.Errorf(
-			"cannot %s declarations out of cgo file %s: import \"C\" and its preamble are file-sensitive",
-			plan.opVerb(), plan.SrcPath,
-		)
-	}
-	if fileHasDotImport(origSrc) {
-		return fmt.Errorf(
-			"cannot %s declarations out of %s: source has dot imports, which obscure dependencies; refactor to qualified imports first",
-			plan.opVerb(),
-			plan.SrcPath,
-		)
-	}
-	// Sink-side mirrors of the file-class guards above: appending to a
-	// generated sink would be destroyed at the next regeneration, and a
-	// dot-import sink defeats the parse-level collision check below — a
-	// dot-imported name colliding with a moved declaration is invisible
-	// until compile time.
-	if !plan.SinkIsNew {
-		if generated, err := isGeneratedFile(plan.SinkPath); err != nil {
-			return err
-		} else if generated {
-			return fmt.Errorf(
-				"cannot write to generated file %s: generated files should be changed at the generator source",
-				plan.SinkPath,
-			)
-		}
-	}
-	if origSink != nil && fileHasDotImport(origSink) {
-		return fmt.Errorf(
-			"cannot write to %s: sink has dot imports, which obscure dependencies and defeat collision detection; refactor to qualified imports first",
 			plan.SinkPath,
 		)
 	}
-	if err := validateDirectives(plan); err != nil {
+	// Per-file-role guards: generated, cgo, and dot-import checks apply to
+	// both source and sink with role-appropriate messages. Appending to a
+	// generated or cgo file is unsafe; a dot-import sink defeats the
+	// parse-level collision check below.
+	type fileRole struct {
+		file *ast.File
+		path string
+		role string // "source" or "sink"
+	}
+	roles := []fileRole{{origSrc, plan.SrcPath, "source"}}
+	if origSink != nil {
+		roles = append(roles, fileRole{origSink, plan.SinkPath, "sink"})
+	}
+	for _, r := range roles {
+		if ast.IsGenerated(r.file) {
+			if r.role == "source" {
+				return fmt.Errorf(
+					"cannot %s declarations out of generated file %s: generated files should be changed at the generator source",
+					plan.opVerb(),
+					r.path,
+				)
+			}
+			return fmt.Errorf(
+				"cannot write to generated file %s: generated files should be changed at the generator source",
+				r.path,
+			)
+		}
+		if fileImportsC(r.file) {
+			if r.role == "source" {
+				return fmt.Errorf(
+					"cannot %s declarations out of cgo file %s: import \"C\" and its preamble are file-sensitive",
+					plan.opVerb(),
+					r.path,
+				)
+			}
+			return fmt.Errorf(
+				"cannot write to cgo file %s: import \"C\" and its preamble are file-sensitive",
+				r.path,
+			)
+		}
+		if fileHasDotImport(r.file) {
+			if r.role == "source" {
+				return fmt.Errorf(
+					"cannot %s declarations out of %s: source has dot imports, which obscure dependencies; refactor to qualified imports first",
+					plan.opVerb(),
+					r.path,
+				)
+			}
+			return fmt.Errorf(
+				"cannot write to %s: sink has dot imports, which obscure dependencies and defeat collision detection; refactor to qualified imports first",
+				r.path,
+			)
+		}
+	}
+	if err := validateDirectives(plan, same); err != nil {
 		return err
 	}
 	if err := validateBuildConstraints(plan); err != nil {
@@ -209,7 +220,7 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 	if err := validateImportAliases(plan, origSink, origSrc); err != nil {
 		return err
 	}
-	if err := validateNoStrandedRefs(plan); err != nil {
+	if err := validateNoStrandedRefs(plan, same); err != nil {
 		return err
 	}
 	// Collisions: Go package-namespace keys from the appended tail against keys
@@ -242,16 +253,13 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 // symbol of the package the declaration lives in. Same-directory moves are
 // allowed — rendering carries the directive's required blank import into
 // the sink (see requiredBlankImports).
-func validateDirectives(plan Plan) error {
+// sameDirHint is the precomputed sameDir result from validatePlan.
+func validateDirectives(plan Plan, sameDirHint bool) error {
 	embed, linkname := travellingDirectives(plan.extracted)
 	if !embed && !linkname {
 		return nil
 	}
-	same, err := sameDir(plan.SrcPath, plan.SinkPath)
-	if err != nil {
-		return err
-	}
-	if same {
+	if sameDirHint {
 		return nil
 	}
 	if embed {
@@ -290,6 +298,14 @@ func sameDir(a, b string) (bool, error) {
 // declare one alias twice and not compile. Like the dot-import rule, the
 // check is file-wide rather than per moved declaration — conservative, but
 // it fails before anything is written.
+//
+// It also checks two new directions:
+//   - Direction A (source alias vs sink decl): if a source named-import alias
+//     equals a package-level declared name in the sink, the carried import
+//     would be pruned by goimports as shadowed, breaking the sink.
+//   - Direction B (moved decl vs sink alias): if a moved declaration's name
+//     equals a sink named-import alias, the declaration would shadow the
+//     alias in the combined sink.
 func validateImportAliases(plan Plan, origSink, origSrc *ast.File) error {
 	if origSink == nil {
 		return nil
@@ -323,6 +339,75 @@ func validateImportAliases(plan Plan, origSink, origSrc *ast.File) error {
 			)
 		}
 	}
+
+	// Direction A: source named-import alias vs sink package-level declaration.
+	// Collect sink package-level declared names (funcs without receivers,
+	// types, vars, consts — methods do NOT bind package-level names).
+	sinkDeclNames := make(map[string]bool)
+	for _, d := range origSink.Decls {
+		switch x := d.(type) {
+		case *ast.FuncDecl:
+			if x.Recv == nil || len(x.Recv.List) == 0 {
+				sinkDeclNames[x.Name.Name] = true
+			}
+		case *ast.GenDecl:
+			if x.Tok == token.IMPORT {
+				continue
+			}
+			for _, s := range x.Specs {
+				switch ss := s.(type) {
+				case *ast.TypeSpec:
+					sinkDeclNames[ss.Name.Name] = true
+				case *ast.ValueSpec:
+					for _, n := range ss.Names {
+						if n.Name != "_" {
+							sinkDeclNames[n.Name] = true
+						}
+					}
+				}
+			}
+		}
+	}
+	for _, imp := range origSrc.Imports {
+		name, path, err := namedImport(imp)
+		if err != nil {
+			return err
+		}
+		if name == "" {
+			continue
+		}
+		if sinkDeclNames[name] {
+			return fmt.Errorf(
+				"cannot write to %s: source %s imports %q as %s but the sink declares %s at package level; rename the import alias or the sink declaration first",
+				plan.SinkPath,
+				plan.SrcPath,
+				path,
+				name,
+				name,
+			)
+		}
+	}
+
+	// Direction B: moved declaration name vs sink named-import alias.
+	// Collect names of declarations appended to the sink (the tail beyond OrigSinkDeclCount).
+	for i := plan.OrigSinkDeclCount; i < len(plan.SinkFile.Decls); i++ {
+		for _, k := range collisionKeys(plan.SinkFile.Decls[i]) {
+			if strings.Contains(k, ".") {
+				// Methods are keyed as "Recv.Method" — not a package-level name.
+				continue
+			}
+			if path, ok := sinkPaths[k]; ok {
+				return fmt.Errorf(
+					"cannot write to %s: moved declaration %s would shadow the sink's import alias %s (path %q); rename the declaration or the import alias first",
+					plan.SinkPath,
+					k,
+					k,
+					path,
+				)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -349,12 +434,9 @@ func namedImport(imp *ast.ImportSpec) (name, path string, err error) {
 // from or to sibling files of the source package are invisible to this
 // check (non-goal: whole-package analysis needs go/types and the full
 // directory).
-func validateNoStrandedRefs(plan Plan) error {
-	same, err := sameDir(plan.SrcPath, plan.SinkPath)
-	if err != nil {
-		return err
-	}
-	if same || len(plan.extracted) == 0 {
+// sameDirHint is the precomputed sameDir result from validatePlan.
+func validateNoStrandedRefs(plan Plan, sameDirHint bool) error {
+	if sameDirHint || len(plan.extracted) == 0 {
 		return nil
 	}
 
@@ -377,36 +459,8 @@ func validateNoStrandedRefs(plan Plan) error {
 	}
 
 	// What travels with the selection: whole funcs, whole specs, or single
-	// names of a narrowed multi-name spec (mirrors applyMove's
-	// classification of the same Extracted entries).
-	travelling := make(map[any]bool, len(plan.extracted))
-	travellingNames := make(map[*ast.ValueSpec]map[string]bool)
-	for _, e := range plan.extracted {
-		o := e.Origin
-		switch {
-		case o == nil:
-			if gd, ok := e.Decl.(*ast.GenDecl); ok {
-				for _, s := range gd.Specs {
-					travelling[s] = true
-				}
-				continue
-			}
-			travelling[e.Decl] = true
-		case o.Names == nil:
-			travelling[o.Spec] = true
-		default:
-			vs, ok := o.Spec.(*ast.ValueSpec)
-			if !ok {
-				continue
-			}
-			if travellingNames[vs] == nil {
-				travellingNames[vs] = make(map[string]bool, len(o.Names))
-			}
-			for _, j := range o.Names {
-				travellingNames[vs][vs.Names[j].Name] = true
-			}
-		}
-	}
+	// names of a narrowed multi-name spec (mirrors applyMove's classification).
+	travelling, travellingNames := plan.travelSet()
 
 	// classify reports whether id resolves to a top-level name of the
 	// source file, and whether that name travels with the selection.

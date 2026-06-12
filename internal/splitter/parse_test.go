@@ -2,6 +2,7 @@ package splitter
 
 import (
 	"crypto/sha256"
+	"go/ast"
 	"os"
 	"path/filepath"
 	"testing"
@@ -78,5 +79,31 @@ func TestParseSnapshotMissingSink(t *testing.T) {
 	}
 	if snap.path != p {
 		t.Fatalf("path: got %q want %q", snap.path, p)
+	}
+}
+
+func TestParse_ObjectResolutionEnabled(t *testing.T) {
+	// validateNoStrandedRefs depends on id.Obj != nil for package-level references.
+	// This test guards against parser.SkipObjectResolution being added to parseGoFile.
+	src := "package p\n\nfunc helper() {}\n\nfunc Foo() { helper() }\n"
+	dir := t.TempDir()
+	path := filepath.Join(dir, "p.go")
+	if err := os.WriteFile(path, []byte(src), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, file, _, err := parseGoFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Find the call to helper() inside Foo and check Obj is set.
+	fn := file.Decls[1].(*ast.FuncDecl) // Foo
+	call := fn.Body.List[0].(*ast.ExprStmt).X.(*ast.CallExpr)
+	id := call.Fun.(*ast.Ident)
+	if id.Obj == nil {
+		t.Fatal(
+			"parseGoFile returned file with Obj=nil for local reference;" +
+				" validateNoStrandedRefs would silently miss it" +
+				" — do not add parser.SkipObjectResolution",
+		)
 	}
 }
