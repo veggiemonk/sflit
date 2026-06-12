@@ -1,8 +1,11 @@
 package splitter
 
-import "io"
+import (
+	"fmt"
+	"io"
+)
 
-const helpText = `sflit - moves Go declarations between files
+var helpText = fmt.Sprintf(`sflit - moves Go declarations between files
 
 Moves or copies top-level Go declarations between files through the AST,
 and refuses any operation that could change what the program means.
@@ -18,8 +21,8 @@ Flags:
   -receiver  string  Receiver type name
   -move              Delete matched decls from source after writing (default: copy)
   -retries   int     Max re-runs after a concurrent-write conflict
-                     (default: 16; 0 or negative uses the default — retry
-                     cannot be disabled). Fanning out more than ~16
+                     (default: %d; 0 or negative uses the default — retry
+                     cannot be disabled). Fanning out more than ~%d
                      concurrent movers on one file needs -retries >= N.
   -json              Print structured JSON result to stdout
   -debug             Print debug logs to stderr
@@ -109,7 +112,7 @@ Exit codes:
      build-constraint mismatch, generated/cgo/dot-import source, parse error,
      no matches, write error, conflict retries exhausted)
   2  Flag/usage error (invalid flags or missing required arguments)
-`
+`, defaultRetries, defaultRetries)
 
 func printHelp(w io.Writer) {
 	_, _ = io.WriteString(w, helpText)
