@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   concurrent runs on the same files with no external coordination. Each run
   records SHA-256 pre-image snapshots at parse, verifies them under a short
   per-file lock at commit, and re-runs against fresh content on conflict —
-  bounded by the new `-retries` flag (default 5). See ADR-0001.
+  bounded by the new `-retries` flag (default 16). See ADR-0001.
 - Sidecar lock files (`.<name>.sflit.lock`) are removed on release on unix;
   on windows they are left behind (best-effort platform) and are safe to
   ignore.
@@ -55,6 +55,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cannot infer an alias from the identifier, so a split into a directory with
   no sibling files previously wrote a sink that referenced the alias without
   importing it and did not compile.
+- Copy mode no longer creates or locks a sidecar next to the source, so
+  copying out of read-only trees (Go module cache, 0555 checkouts) works
+  and source directories see no transient lock dotfiles. The source
+  pre-image is still verified at commit (ADR-0001 Amendment 2).
+- A source import alias colliding with a sink package-level declaration —
+  in either direction — is rejected before writing. Previously sflit
+  exited 0 and wrote a sink that did not compile (goimports pruned the
+  carried import as shadowed) or silently rebound the name.
+- Generated-file detection follows the official line-anchored convention
+  (`go/ast.IsGenerated`) on the already-parsed AST: markers below line 20
+  are now honored, mid-sentence mentions no longer false-positive, and the
+  check cannot race a concurrent writer by re-reading the file from disk.
+- Moving declarations into an existing cgo sink is rejected (`import "C"`
+  and its preamble are file-sensitive); previously only cgo sources were.
+- Lock acquisition order is case-folded, so concurrent runs spelling the
+  same files with different case cannot AB-BA deadlock on case-insensitive
+  filesystems (macOS, Windows); case-aliased spellings of one file dedup
+  by file identity instead of by string.
+- Sidecar lock files are created mode 0644 instead of 0600, so a sidecar
+  left behind by a crashed run does not lock other users out of the file.
+- A failed run removes the directories it created for a new sink instead
+  of leaving an empty package-less directory behind.
+- A `chmod` racing the commit window is preserved: the committed file's
+  mode is sampled under the lock, not before it.
+- `SemEqual` (the test oracle) now detects a dropped or added doc comment
+  on a grouped `var`/`const`/`type` block; previously group-level docs
+  were invisible to the comparison.
 
 ## [0.5.0] - 2026-06-10
 
