@@ -77,6 +77,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   left behind by a crashed run does not lock other users out of the file.
 - A failed run removes the directories it created for a new sink instead
   of leaving an empty package-less directory behind.
+- Source and sink naming the same file — exactly (`-source a.go -sink a.go`)
+  or via a case-aliased spelling (`A.go` on macOS/Windows) — is rejected in
+  both modes. Previously a move whose selection escaped the collision check
+  (blank-identifier declarations like `var _ io.Reader = …`) exited 0 and
+  silently deleted the declaration: the rewritten source overwrote the
+  just-committed sink.
+- The same-directory copy guard compares directories by file identity, not
+  by path bytes, so a case-aliased directory spelling (`PKG/` vs `pkg/`)
+  can no longer slip a duplicate declaration into the package; the same
+  identity test keeps same-directory moves classified correctly.
+- A failure inside the commit window (chmod or rename) releases the file
+  locks before rolling back created directories; previously the sidecar
+  still inside the new sink directory made the rollback stop, orphaning
+  the directory tree the run had created.
+- A commit-window failure after the sink was already renamed into place
+  now always names the committed sink in the error, including the chmod
+  step between the two renames; previously that path returned the bare
+  chmod error and a degraded move (decls duplicated in both files) gave
+  no recovery breadcrumb.
+- Directories created before a failed `MkdirAll` (disk full, permission
+  change mid-walk) are rolled back; previously that one staging failure
+  path skipped the rollback and leaked the partial tree.
+- A concurrent run's conflict rollback deleting a freshly shared sink
+  directory between another run's `MkdirAll` and temp creation now
+  classifies as a conflict and is retried; previously it surfaced as a
+  hard exit 1, breaking fan-out-without-coordination for new-directory
+  sinks.
+- Help and tool schema document that cgo files are rejected as source or
+  as existing sink; the prose previously claimed the cgo rule was
+  source-only while the code rejected sinks too.
 - A `chmod` racing the commit window is preserved: the committed file's
   mode is sampled under the lock, not before it.
 - `SemEqual` (the test oracle) now detects a dropped or added doc comment
