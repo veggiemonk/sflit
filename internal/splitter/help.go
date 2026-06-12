@@ -38,10 +38,10 @@ At least one of -regex or -receiver is required.
 Blocked splits (copy and move alike):
   - init functions are rejected: moving them may change package
     initialization order, and copying duplicates init so it runs twice.
-  - Partial splits of const blocks with iota or implicit expressions are
-    rejected; select the whole block or refactor constants manually first.
-  - Partial splits of multi-name var/const specs are rejected unless each
-    name has a corresponding explicit value.
+  - Narrowing a const block with iota or implicit expressions is blocked;
+    select the whole block or refactor the constants manually first.
+  - Narrowing a multi-name var/const spec is blocked unless each name has
+    a corresponding explicit value.
   - Generated files are rejected, as source or as existing sink: generated
     files should be changed at the generator source.
   - Files with build constraints can only move into sinks with identical

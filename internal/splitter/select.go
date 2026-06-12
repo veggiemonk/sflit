@@ -93,7 +93,7 @@ func selectDecls(file *ast.File, cfg Config) ([]Match, error) {
 func rejectInitSplit(fn *ast.FuncDecl) error {
 	if fn.Recv == nil && fn.Name != nil && fn.Name.Name == "init" {
 		return errors.New(
-			"cannot split init function: copying duplicates it and moving may change init order; refactor init body into a named function and split that instead",
+			"cannot move or copy init function: copying duplicates it and moving may change init order; refactor the init body into a named function and select that instead",
 		)
 	}
 	return nil
@@ -292,7 +292,7 @@ func rejectUnsafePartialMultiNameValueSpec(gd *ast.GenDecl, re *regexp.Regexp) e
 		}
 		if len(vs.Values) != len(vs.Names) {
 			return fmt.Errorf(
-				"cannot partially split multi-name value spec: %d names share %d values; split the declaration manually first",
+				"cannot narrow multi-name value spec: %d names share %d values; rewrite the declaration with one value per name first",
 				len(vs.Names),
 				len(vs.Values),
 			)
@@ -322,7 +322,7 @@ func valueSpecPartiallyMatched(vs *ast.ValueSpec, re *regexp.Regexp) bool {
 
 // isIotaConstBlock reports whether gd is a const block with any value
 // expression containing the predeclared identifier `iota`. Subsequent specs in
-// such a block may implicitly inherit the iota chain, so partial splits are
+// such a block may implicitly inherit the iota chain, so narrowing is
 // rejected; callers must select the whole block or refactor manually.
 func isIotaConstBlock(gd *ast.GenDecl) bool {
 	if gd.Tok != token.CONST || len(gd.Specs) == 0 {
@@ -375,7 +375,7 @@ func rejectPartialIotaConstSplit(gd *ast.GenDecl, re *regexp.Regexp) error {
 		return nil
 	}
 	return fmt.Errorf(
-		"cannot partially split iota const block: selection matches %d of %d names; select the whole block or refactor it manually",
+		"cannot narrow iota const block: selection matches %d of %d names; select the whole block or refactor it manually",
 		matchedNames,
 		totalNames,
 	)
@@ -411,6 +411,6 @@ func rejectPartialImplicitConstSplit(gd *ast.GenDecl, re *regexp.Regexp) error {
 		return nil
 	}
 	return errors.New(
-		"cannot partially split const block with implicit expressions: select the whole block or make each const expression explicit",
+		"cannot narrow const block with implicit expressions: select the whole block or make each const expression explicit",
 	)
 }

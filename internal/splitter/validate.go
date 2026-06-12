@@ -161,20 +161,20 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 		return err
 	} else if generated {
 		return fmt.Errorf(
-			"cannot split generated file %s: generated files should be changed at the generator source",
-			plan.SrcPath,
+			"cannot %s declarations out of generated file %s: generated files should be changed at the generator source",
+			plan.opVerb(), plan.SrcPath,
 		)
 	}
 	if fileImportsC(origSrc) {
 		return fmt.Errorf(
-			"cannot split cgo file %s: import \"C\" and its preamble are file-sensitive",
-			plan.SrcPath,
+			"cannot %s declarations out of cgo file %s: import \"C\" and its preamble are file-sensitive",
+			plan.opVerb(), plan.SrcPath,
 		)
 	}
 	if fileHasDotImport(origSrc) {
 		return fmt.Errorf(
-			"cannot split file with dot imports %s: dot imports obscure dependencies; refactor to qualified imports first",
-			plan.SrcPath,
+			"cannot %s declarations out of %s: source has dot imports, which obscure dependencies; refactor to qualified imports first",
+			plan.opVerb(), plan.SrcPath,
 		)
 	}
 	// Sink-side mirrors of the file-class guards above: appending to a
@@ -252,19 +252,15 @@ func validateDirectives(plan Plan) error {
 	if same {
 		return nil
 	}
-	verb := "move"
-	if !plan.Move {
-		verb = "copy"
-	}
 	if embed {
 		return fmt.Errorf(
 			"cannot %s declarations carrying //go:embed into a different directory %s: embed patterns are directory-relative, so the embedded files would silently change; move within the source directory or relocate the embedded files first",
-			verb, plan.SinkPath,
+			plan.opVerb(), plan.SinkPath,
 		)
 	}
 	return fmt.Errorf(
 		"cannot %s declarations carrying //go:linkname into a different directory %s: the directive binds a symbol of the source package; move within the source directory or refactor first",
-		verb, plan.SinkPath,
+		plan.opVerb(), plan.SinkPath,
 	)
 }
 
@@ -373,7 +369,7 @@ func validateNoStrandedRefs(plan Plan) error {
 	}
 
 	// What travels with the selection: whole funcs, whole specs, or single
-	// names of a partially split multi-name spec (mirrors applyMove's
+	// names of a narrowed multi-name spec (mirrors applyMove's
 	// classification of the same Extracted entries).
 	travelling := make(map[any]bool, len(plan.extracted))
 	travellingNames := make(map[*ast.ValueSpec]map[string]bool)
@@ -447,8 +443,8 @@ func validateNoStrandedRefs(plan Plan) error {
 	for _, e := range plan.extracted {
 		if stranded := refs(e.Decl, false); len(stranded) > 0 {
 			return fmt.Errorf(
-				"cannot split %s into different directory %s: moved declaration %s references %s, which stays behind in the source package; move them together or refactor first",
-				plan.SrcPath, plan.SinkPath,
+				"cannot %s declarations from %s into a different directory %s: %s references %s, which stays behind in the source package; move them together or refactor first",
+				plan.opVerb(), plan.SrcPath, plan.SinkPath,
 				strings.Join(declKeys(e.Decl), ", "), strings.Join(stranded, ", "),
 			)
 		}
@@ -487,7 +483,7 @@ func validateNoStrandedRefs(plan Plan) error {
 					continue
 				}
 				if vs, ok := s.(*ast.ValueSpec); ok && travellingNames[vs] != nil {
-					// Partially split spec: only the kept names' values
+					// Narrowed spec: only the kept names' values
 					// (1:1 with names — the shared-value case is rejected
 					// upstream) and the shared type stay behind.
 					if vs.Type != nil {

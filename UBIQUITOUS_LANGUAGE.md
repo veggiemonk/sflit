@@ -29,8 +29,22 @@ identifiers.
 | **Collision**         | A selected package-namespace name already existing in the sink — a blocked split                          | conflict, duplicate name   |
 | **Package mismatch**  | The sink's package clause differing from the source's — a blocked split                                   | wrong package              |
 | **Same-directory copy** | Copying (without `-move`) into the source's own directory, which would duplicate names — a blocked split | in-place copy              |
+| **Stranded reference** | A cross-directory operation tearing references apart: a moved declaration referencing a name that stays, or a staying declaration referencing a name that leaves — a blocked split (file-local check) | broken ref, dangling reference |
+| **Alias collision**   | The sink importing a different path under an alias the source also uses — a blocked split                 | import clash               |
+| **Directive block**   | Rejecting cross-directory operations on declarations carrying `//go:embed` or `//go:linkname` — a blocked split; same-directory moves carry the required blank import | pragma rejection           |
 | **Semantic accuracy** | The guarantee that output preserves meaning (AST re-parsed, reprinted through gofmt), not bytes            | byte-for-byte, lossless    |
 | **Orphan comment**    | A trailing comment group after the last moved declaration that must travel with it, not be stranded       | dangling comment, leftover |
+
+## Concurrency (ADR-0001)
+
+| Term                 | Definition                                                                                                  | Aliases to avoid              |
+| -------------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------- |
+| **Conflict**         | Another writer changing source or sink between parse and commit, detected by pre-image hash mismatch         | race, collision (names only)  |
+| **Commit window**    | The short critical section under the sidecar locks: re-read, verify pre-images, rename temps into place      | critical section, lock window |
+| **Pre-image hash**   | The SHA-256 of a file's bytes captured at parse, verified inside the commit window                            | snapshot hash, checksum       |
+| **Sidecar lock**     | The per-file `.<name>.sflit.lock` advisory file lock held only for the commit window                          | lockfile, mutex               |
+| **Retry**            | One full re-run of the pipeline after a conflict, bounded by `-retries`; selection is semantic, so re-runs converge | re-attempt, backoff loop |
+| **Attempt**          | One pipeline execution; attempts = retries + 1 (the first run is not a retry)                                 | try, round                    |
 
 ## Workflow
 
@@ -49,7 +63,8 @@ identifiers.
 - A **Split** is one or more **Moves** from a single **Source**; each **Move** writes to exactly one **Sink**.
 - A **Move** is a **Copy** plus deletion from the **Source**; **Copy** is the default.
 - A **Selector** chooses **Declarations**; at least one of regex or receiver is required.
-- A **Blocked split** rejects before writing — **Collision**, **Package mismatch**, and **Same-directory copy** are kinds of blocked splits.
+- A **Blocked split** rejects before writing — **Collision**, **Package mismatch**, **Same-directory copy**, **Stranded reference**, **Alias collision**, and the **Directive block** are kinds of blocked splits.
+- A **Conflict** is not a **Collision**: a conflict is two writers racing on a file (resolved by **Retry**); a collision is two declarations sharing a name (a **Blocked split**).
 - A **Pure-move commit** contains only **Moves**/**Copies** and relies on **Semantic accuracy** for its review guarantee.
 - A **Partition** is what **Discovery mode** would propose and **Plan mode** would apply.
 - A **Reversal** is an ordinary **Move**, not a separate operation.

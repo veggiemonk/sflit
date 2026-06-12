@@ -55,9 +55,9 @@ func toolSchemaJSON() []byte {
 		},
 		"blocked_splits": []string{
 			"init functions (copy and move alike): moving may change package initialization order, copying duplicates init so it runs twice",
-			"partial splits of iota const blocks (copy and move alike)",
-			"partial splits of const blocks with implicit expressions (copy and move alike)",
-			"partial splits of multi-name var/const specs unless values map one-to-one to names (copy and move alike)",
+			"narrowing an iota const block (copy and move alike)",
+			"narrowing a const block with implicit expressions (copy and move alike)",
+			"narrowing a multi-name var/const spec unless values map one-to-one to names (copy and move alike)",
 			"generated files, as source or as existing sink",
 			"moves between source and sink files with different or absent build constraints on either side",
 			"cgo source files using import C",

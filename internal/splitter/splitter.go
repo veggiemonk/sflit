@@ -28,9 +28,9 @@
 // leading comments, in-body comments, inline comments, and trailing orphan
 // comments when the matched declaration is at the end of the file. Moves that
 // would silently change package initialization or declaration semantics are
-// rejected: init functions, partial iota const blocks, partial const blocks with
-// implicit expressions, and unsafe partial multi-name value specs must be moved
-// as a whole or refactored manually first.
+// rejected: init functions, narrowing of iota const blocks, of const blocks
+// with implicit expressions, and of unsafe multi-name value specs must be
+// moved as a whole or refactored manually first.
 //
 // Copy mode (Move false, the default) only writes the sink, so it is valid
 // only when the sink lives in a different directory than the source (same

@@ -105,6 +105,15 @@ func buildPlan(
 	}
 }
 
+// opVerb names the operation for user-facing messages: move or copy, the
+// glossary's only operation verbs (UBIQUITOUS_LANGUAGE.md).
+func (p Plan) opVerb() string {
+	if p.Move {
+		return "move"
+	}
+	return "copy"
+}
+
 // applyMove commits the move to the source AST. It is the only place in
 // the pipeline that mutates the parsed source:
 //
@@ -168,7 +177,7 @@ func (p *Plan) applyMove() {
 		gd.Specs = kept
 		if len(gd.Specs) == 0 {
 			// Defensive: selection emits a whole-decl match when every
-			// spec matches, so a partial split always keeps >= 1 spec.
+			// spec matches, so a narrowed group always keeps >= 1 spec.
 			dropDecls[gd] = true
 		}
 	}

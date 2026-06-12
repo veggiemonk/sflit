@@ -2,7 +2,7 @@
 # Users must move the whole iota block or refactor it manually.
 
 ! exec sflit -source big.go -sink small.go -regex '^KindUnknown$' -move
-stderr 'cannot partially split iota const block'
+stderr 'cannot narrow iota const block'
 cmp big.go expected_big.go
 ! exists small.go
 

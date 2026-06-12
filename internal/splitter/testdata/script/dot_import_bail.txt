@@ -2,7 +2,7 @@
 # recreate them for moved declarations, so reject dot-import source files.
 
 ! exec sflit -source dot.go -sink small.go -regex '^Area$' -move
-stderr 'cannot split file with dot imports'
+stderr 'source has dot imports'
 cmp dot.go expected_dot.go
 ! exists small.go
 

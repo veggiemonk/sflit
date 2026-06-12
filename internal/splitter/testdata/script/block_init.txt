@@ -3,13 +3,13 @@
 # init funcs, so the package compiles but runs init twice).
 
 ! exec sflit -source big.go -sink small.go -regex '^init$' -move
-stderr 'cannot split init function'
+stderr 'cannot move or copy init function'
 cmp big.go expected_big.go
 ! exists small.go
 
 # Copy mode (no -move) is rejected too.
 ! exec sflit -source big.go -sink copy.go -regex '^init$'
-stderr 'cannot split init function'
+stderr 'cannot move or copy init function'
 cmp big.go expected_big.go
 ! exists copy.go
 

@@ -2,7 +2,7 @@
 # by the next generator run.
 
 ! exec sflit -source generated.go -sink small.go -regex '^Generated$' -move
-stderr 'cannot split generated file'
+stderr 'cannot \w+ declarations out of generated file'
 cmp generated.go expected_generated.go
 ! exists small.go
 

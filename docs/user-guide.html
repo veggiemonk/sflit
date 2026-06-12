@@ -540,8 +540,8 @@
     <p class="lead">The guarantee is "never change what the program means." Anywhere that guarantee can't hold, sflit refuses instead of guessing — copy and move alike.</p>
 
     <div class="guard"><span class="sign">⛔</span><p><strong><code>init</code> functions are rejected.</strong> Moving them may change package initialization order; copying duplicates init so it runs twice.</p></div>
-    <div class="guard"><span class="sign">⛔</span><p><strong>Partial splits of <code>iota</code>/implicit const blocks are rejected.</strong> Select the whole block, or refactor the constants manually first.</p></div>
-    <div class="guard"><span class="sign">⛔</span><p><strong>Partial splits of multi-name specs are rejected</strong> unless each name has a corresponding explicit value.</p></div>
+    <div class="guard"><span class="sign">⛔</span><p><strong>Narrowing an <code>iota</code>/implicit const block is blocked.</strong> Select the whole block, or refactor the constants manually first.</p></div>
+    <div class="guard"><span class="sign">⛔</span><p><strong>Narrowing a multi-name spec is blocked</strong> unless each name has a corresponding explicit value.</p></div>
     <div class="guard"><span class="sign">⛔</span><p><strong>Generated files, cgo (<code>import "C"</code>), and dot imports are rejected.</strong> Build-constrained files can only move into sinks with identical constraints.</p></div>
     <div class="guard"><span class="sign">⛔</span><p><strong>Same-directory copies are rejected.</strong> The source would keep the declarations, the package would gain duplicates and stop compiling. Use <code>-move</code>, or copy into a different directory.</p></div>
 

@@ -3,14 +3,14 @@
 # materialised, so users must select the whole block or refactor it manually.
 
 ! exec sflit -source big.go -sink small.go -regex '^Kind(A|B)$' -move
-stderr 'cannot partially split iota const block'
+stderr 'cannot narrow iota const block'
 cmp big.go expected_big.go
 ! exists small.go
 
 # Copy mode (no -move) is rejected too: a copied implicit spec would render
 # as `const KindB` — invalid Go — in the sink.
 ! exec sflit -source big.go -sink copy.go -regex '^KindB$'
-stderr 'cannot partially split iota const block'
+stderr 'cannot narrow iota const block'
 cmp big.go expected_big.go
 ! exists copy.go
 

@@ -13,7 +13,7 @@ not byte-for-byte fidelity: the AST is re-parsed and reprinted through
 
 Fair. Then a file grew past 5000 lines. Refactoring it consumed so many
 tokens and doing it manually was pretty painful. It is not about code
-quality or taste, just pure efficiency and speed. Therefore this tool exist.
+quality or taste, just pure efficiency and speed. Therefore this tool exists.
 
 Here is what moving declarations buys you:
 
@@ -106,10 +106,10 @@ At least one of -regex or -receiver is required.
 Blocked splits (copy and move alike):
   - init functions are rejected: moving them may change package
     initialization order, and copying duplicates init so it runs twice.
-  - Partial splits of const blocks with iota or implicit expressions are
-    rejected; select the whole block or refactor constants manually first.
-  - Partial splits of multi-name var/const specs are rejected unless each
-    name has a corresponding explicit value.
+  - Narrowing a const block with iota or implicit expressions is blocked;
+    select the whole block or refactor the constants manually first.
+  - Narrowing a multi-name var/const spec is blocked unless each name has
+    a corresponding explicit value.
   - Generated files are rejected, as source or as existing sink: generated
     files should be changed at the generator source.
   - Files with build constraints can only move into sinks with identical
@@ -198,10 +198,10 @@ schema source.
 - On collision (a selected Go package-namespace name already exists in the sink), `sflit` bails before writing.
 - On package mismatch (sink's package differs from source's), `sflit` bails before writing.
 - On copy, only the sink is written; on move, source and sink are written via temp-file + rename.
-- Concurrent invocations on the same files are safe without external coordination — fan out N agents freely. Each run hashes source and sink at parse and verifies both under a short per-file lock at commit; a conflicting write (by sflit or any other tool) triggers a re-run against the fresh content, up to `-retries` times (default 5). See [ADR-0001](docs/adr/0001-optimistic-concurrency-for-parallel-edits.md). Sidecar lock files (`.<name>.sflit.lock`) are removed on release; on windows (best-effort platform) they are left behind and are safe to ignore or gitignore.
+- Concurrent invocations on the same files are safe without external coordination — fan out N agents freely. Each run hashes source and sink at parse and verifies both under a short per-file lock at commit; a conflicting write (by sflit or any other tool) triggers a re-run against the fresh content, up to `-retries` times (default 16; 0 or negative uses the default — retry cannot be disabled). See [ADR-0001](docs/adr/0001-optimistic-concurrency-for-parallel-edits.md). Sidecar lock files (`.<name>.sflit.lock`) are removed on release; on windows (best-effort platform) they are left behind and are safe to ignore or gitignore.
 - Copying (the default, without `-move`) into the source's own directory is rejected before writing: the source keeps every selected declaration, so the package would gain duplicate names and stop compiling. Use `-move` for same-directory splits; copy targets a sink in a different directory.
-- A copy or move that could silently change semantics or produce invalid Go is a blocked split — rejected before any write: `init` functions, narrowing of `iota`/implicit const blocks, and unsafe partial multi-name value specs.
+- A copy or move that could silently change semantics or produce invalid Go is a blocked split — rejected before any write: `init` functions, narrowing of `iota`/implicit const blocks, narrowing of unsafe multi-name value specs, cross-directory operations that would strand package-internal references (file-local check: sibling files of the source are not seen), sinks importing a different path under an alias the source also uses, and cross-directory operations on declarations carrying `//go:embed` or `//go:linkname`.
 - Otherwise, a selector that matches only part of a grouped var/const/type block narrows it: the matching specs travel, the siblings stay in the source.
-- `sflit` rejects generated files, cgo files, dot-import files, and build-constraint mismatches rather than guessing at file-sensitive semantics.
+- `sflit` rejects generated files (source or sink), cgo files, dot-import files (source or sink), and build-constraint mismatches rather than guessing at file-sensitive semantics.
 - Blank identifier declarations such as interface assertions do not collide with each other.
 - Comments associated with moved declarations travel with them: doc comments, `//go:` directives, free-floating lead comments, in-body comments, inline spec/statement comments, and trailing orphan comments when the matched declaration is at the end of the file.

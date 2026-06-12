@@ -99,16 +99,16 @@ func TestSelectRegexOnly_InitCopyRejected(t *testing.T) {
 	// multiple init funcs, so it compiles but runs init twice.
 	_, f := mustParse(t, "package p\nfunc init(){}\n")
 	_, err := selectDecls(f, Config{Regex: "^init$"})
-	if err == nil || !strings.Contains(err.Error(), "cannot split init function") {
-		t.Fatalf("got err %v, want cannot split init function", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot move or copy init function") {
+		t.Fatalf("got err %v, want cannot move or copy init function", err)
 	}
 }
 
 func TestSelectRegexOnly_InitMoveRejected(t *testing.T) {
 	_, f := mustParse(t, "package p\nfunc init(){}\n")
 	_, err := selectDecls(f, Config{Regex: "^init$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot split init function") {
-		t.Fatalf("got err %v, want cannot split init function", err)
+	if err == nil || !strings.Contains(err.Error(), "cannot move or copy init function") {
+		t.Fatalf("got err %v, want cannot move or copy init function", err)
 	}
 }
 
@@ -253,7 +253,7 @@ const (
 )
 `)
 	_, err := selectDecls(f, Config{Regex: "^A$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially split iota const block") {
+	if err == nil || !strings.Contains(err.Error(), "cannot narrow iota const block") {
 		t.Fatalf("got err %v, want iota const partial split rejection", err)
 	}
 }
@@ -269,7 +269,7 @@ const (
 )
 `)
 	_, err := selectDecls(f, Config{Regex: "^B$"})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially split iota const block") {
+	if err == nil || !strings.Contains(err.Error(), "cannot narrow iota const block") {
 		t.Fatalf("got err %v, want iota const partial split rejection", err)
 	}
 }
@@ -305,7 +305,7 @@ const x, y = "same", "same"
 `)
 	// The guard protects the sink's validity, so it applies in copy mode too.
 	_, err := selectDecls(f, Config{Regex: "^a$"})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially split multi-name value spec") {
+	if err == nil || !strings.Contains(err.Error(), "cannot narrow multi-name value spec") {
 		t.Fatalf("want multi-name rejection in copy mode, got %v", err)
 	}
 
@@ -315,7 +315,7 @@ const a, b = 1
 const x, y = "same", "same"
 `)
 	_, err = selectDecls(f, Config{Regex: "^a$", Move: true})
-	if err == nil || !strings.Contains(err.Error(), "cannot partially split multi-name value spec") {
+	if err == nil || !strings.Contains(err.Error(), "cannot narrow multi-name value spec") {
 		t.Fatalf("want multi-name rejection, got %v", err)
 	}
 }
@@ -330,7 +330,7 @@ const (
 `)
 	_, err := selectDecls(f, Config{Regex: "^(A|C|D)$", Move: true})
 	if err == nil ||
-		!strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
+		!strings.Contains(err.Error(), "cannot narrow const block with implicit expressions") {
 		t.Fatalf("got err %v, want implicit const partial split rejection", err)
 	}
 }
@@ -347,7 +347,7 @@ const (
 `)
 	_, err := selectDecls(f, Config{Regex: "^B$"})
 	if err == nil ||
-		!strings.Contains(err.Error(), "cannot partially split const block with implicit expressions") {
+		!strings.Contains(err.Error(), "cannot narrow const block with implicit expressions") {
 		t.Fatalf("got err %v, want implicit const partial split rejection", err)
 	}
 }
