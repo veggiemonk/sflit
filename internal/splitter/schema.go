@@ -60,7 +60,7 @@ func toolSchemaJSON() []byte {
 			"narrowing a multi-name var/const spec unless values map one-to-one to names (copy and move alike)",
 			"generated files, as source or as existing sink",
 			"moves between source and sink files with different or absent build constraints on either side",
-			"cgo source files using import C",
+			"cgo files using import C, as source or as existing sink",
 			"dot imports in source or sink files: they obscure dependencies and defeat collision detection",
 			"declarations carrying //go:embed or //go:linkname moving or copying into a different directory (embed patterns are directory-relative; linkname binds a symbol of the source package); same-directory moves carry the required blank import into the sink",
 			"copying (move=false) into a sink in the source's own directory, because the source keeps the declarations and the package would gain duplicates; use move=true or a sink in a different directory",
@@ -123,7 +123,7 @@ func toolSchemaJSON() []byte {
 		"concurrency": "Safe to fan out N concurrent invocations on the same files with no external coordination. Each run hashes source and sink at parse and verifies them under a short per-file lock at commit; a conflicting write (sflit or any other tool) triggers a re-run against the fresh content, up to -retries times. Sidecar lock files (.<name>.sflit.lock) are removed on release; on windows they are left behind (best-effort platform) and are safe to ignore.",
 		"exit_codes": map[string]string{
 			"0": "Success",
-			"1": "Operation error (collision, package mismatch, same-directory copy, build-constraint mismatch, generated/cgo/dot-import source, parse error, no matches, write error, conflict retries exhausted)",
+			"1": "Operation error (collision, package mismatch, same-directory copy, build-constraint mismatch, generated/cgo/dot-import file, parse error, no matches, write error, conflict retries exhausted)",
 			"2": "Flag/usage error (invalid flags or missing required arguments)",
 		},
 	}

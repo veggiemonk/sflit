@@ -6,7 +6,7 @@
     "narrowing a multi-name var/const spec unless values map one-to-one to names (copy and move alike)",
     "generated files, as source or as existing sink",
     "moves between source and sink files with different or absent build constraints on either side",
-    "cgo source files using import C",
+    "cgo files using import C, as source or as existing sink",
     "dot imports in source or sink files: they obscure dependencies and defeat collision detection",
     "declarations carrying //go:embed or //go:linkname moving or copying into a different directory (embed patterns are directory-relative; linkname binds a symbol of the source package); same-directory moves carry the required blank import into the sink",
     "copying (move=false) into a sink in the source's own directory, because the source keeps the declarations and the package would gain duplicates; use move=true or a sink in a different directory",
@@ -64,7 +64,7 @@
   ],
   "exit_codes": {
     "0": "Success",
-    "1": "Operation error (collision, package mismatch, same-directory copy, build-constraint mismatch, generated/cgo/dot-import source, parse error, no matches, write error, conflict retries exhausted)",
+    "1": "Operation error (collision, package mismatch, same-directory copy, build-constraint mismatch, generated/cgo/dot-import file, parse error, no matches, write error, conflict retries exhausted)",
     "2": "Flag/usage error (invalid flags or missing required arguments)"
   },
   "name": "sflit",

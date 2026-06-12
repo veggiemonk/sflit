@@ -42,7 +42,8 @@ Blocked splits (copy and move alike):
     files should be changed at the generator source.
   - Files with build constraints can only move into sinks with identical
     build constraints.
-  - Source files using cgo import "C" are rejected.
+  - Files using cgo import "C" are rejected, as source or as existing
+    sink: import "C" and its preamble are file-sensitive.
   - Dot imports are rejected in both source and sink: they obscure
     dependencies and defeat collision detection.
   - Declarations carrying //go:embed or //go:linkname cannot move or copy
@@ -102,6 +103,6 @@ Other:
 Exit codes:
   0  Success
   1  Operation error (collision, package mismatch, same-directory copy,
-     build-constraint mismatch, generated/cgo/dot-import source, parse error,
+     build-constraint mismatch, generated/cgo/dot-import file, parse error,
      no matches, write error, conflict retries exhausted)
   2  Flag/usage error (invalid flags or missing required arguments)
