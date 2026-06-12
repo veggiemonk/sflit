@@ -177,6 +177,30 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 			plan.SrcPath,
 		)
 	}
+	// Sink-side mirrors of the file-class guards above: appending to a
+	// generated sink would be destroyed at the next regeneration, and a
+	// dot-import sink defeats the parse-level collision check below — a
+	// dot-imported name colliding with a moved declaration is invisible
+	// until compile time.
+	if !plan.SinkIsNew {
+		if generated, err := isGeneratedFile(plan.SinkPath); err != nil {
+			return err
+		} else if generated {
+			return fmt.Errorf(
+				"cannot write to generated file %s: generated files should be changed at the generator source",
+				plan.SinkPath,
+			)
+		}
+	}
+	if origSink != nil && fileHasDotImport(origSink) {
+		return fmt.Errorf(
+			"cannot write to %s: sink has dot imports, which obscure dependencies and defeat collision detection; refactor to qualified imports first",
+			plan.SinkPath,
+		)
+	}
+	if err := validateDirectives(plan); err != nil {
+		return err
+	}
 	if err := validateBuildConstraints(plan); err != nil {
 		return err
 	}
@@ -207,6 +231,41 @@ func validatePlan(plan Plan, origSink, origSrc *ast.File) error {
 		}
 	}
 	return nil
+}
+
+// validateDirectives rejects cross-directory operations on declarations
+// carrying //go:embed or //go:linkname: embed patterns resolve relative to
+// the directory of the file containing the directive, so the operation
+// would compile green yet silently embed different files; linkname binds a
+// symbol of the package the declaration lives in. Same-directory moves are
+// allowed — rendering carries the directive's required blank import into
+// the sink (see requiredBlankImports).
+func validateDirectives(plan Plan) error {
+	embed, linkname := travellingDirectives(plan.extracted)
+	if !embed && !linkname {
+		return nil
+	}
+	same, err := sameDir(plan.SrcPath, plan.SinkPath)
+	if err != nil {
+		return err
+	}
+	if same {
+		return nil
+	}
+	verb := "move"
+	if !plan.Move {
+		verb = "copy"
+	}
+	if embed {
+		return fmt.Errorf(
+			"cannot %s declarations carrying //go:embed into a different directory %s: embed patterns are directory-relative, so the embedded files would silently change; move within the source directory or relocate the embedded files first",
+			verb, plan.SinkPath,
+		)
+	}
+	return fmt.Errorf(
+		"cannot %s declarations carrying //go:linkname into a different directory %s: the directive binds a symbol of the source package; move within the source directory or refactor first",
+		verb, plan.SinkPath,
+	)
 }
 
 // sameDir reports whether two file paths resolve to the same parent

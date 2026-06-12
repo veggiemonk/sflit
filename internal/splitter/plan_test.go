@@ -2,6 +2,7 @@ package splitter
 
 import (
 	"go/ast"
+	"go/token"
 	"testing"
 )
 
@@ -140,5 +141,36 @@ func TestApplyMove_TrimsPartialMultiNameValueSpec(t *testing.T) {
 	syn := plan.MovedFile.Decls[0].(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
 	if len(syn.Names) != 1 || syn.Names[0].Name != "a" || len(syn.Values) != 1 {
 		t.Fatalf("sink spec = names %v values %d, want [a]/1", syn.Names, len(syn.Values))
+	}
+}
+
+// TestBuildPlan_OrdersMovedDeclsBySourcePosition pins the ordering invariant
+// behind doc-comment attachment: go/printer interleaves comments with nodes
+// strictly by position, so a synthetic (group-narrowed) match originating
+// later in the source than a non-synthetic match must not be emitted first.
+func TestBuildPlan_OrdersMovedDeclsBySourcePosition(t *testing.T) {
+	fset, src := mustParse(t, `package p
+
+// DocA documents DocA.
+func DocA() int { return 1 }
+
+var (
+	// travels documents travels.
+	travels = 8
+	stays   = 9
+)
+`)
+	ms, _ := selectDecls(src, Config{Regex: "^(DocA|travels)$", Move: true})
+	ex := extractMatches(fset, src, ms)
+	plan := buildPlan(fset, nil, "src.go", "sink.go", src, nil, ex, true)
+	if len(plan.MovedFile.Decls) != 2 {
+		t.Fatalf("want 2 moved decls, got %d", len(plan.MovedFile.Decls))
+	}
+	last := token.NoPos
+	for i, d := range plan.MovedFile.Decls {
+		if d.Pos() < last {
+			t.Fatalf("MovedFile.Decls[%d] at %v precedes its predecessor at %v: decls out of source position order", i, d.Pos(), last)
+		}
+		last = d.Pos()
 	}
 }

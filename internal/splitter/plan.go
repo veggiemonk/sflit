@@ -58,6 +58,16 @@ func buildPlan(
 			moved.Comments = append(moved.Comments, e.LeadComms...)
 		}
 	}
+	// go/printer interleaves comments with nodes strictly by position, so
+	// decls must be in source position order like the comments below —
+	// extraction emits synthetic (group-narrowed) matches first regardless
+	// of where their group sits in the source. syntheticGenDecl anchors its
+	// TokPos at spec.Pos()-1, so position sort is well-defined.
+	if len(moved.Decls) > 1 {
+		sort.SliceStable(moved.Decls, func(i, j int) bool {
+			return moved.Decls[i].Pos() < moved.Decls[j].Pos()
+		})
+	}
 	if len(moved.Comments) > 1 {
 		sort.SliceStable(moved.Comments, func(i, j int) bool {
 			return moved.Comments[i].Pos() < moved.Comments[j].Pos()

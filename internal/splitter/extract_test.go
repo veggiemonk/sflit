@@ -247,3 +247,30 @@ func Foo() {}
 		t.Fatalf("free-floating comment above decl not captured")
 	}
 }
+
+// TestExtract_LineDirectiveDoesNotStealDoc pins that comment-ownership
+// heuristics use physical line positions: a //line directive renumbers the
+// compiler-adjusted view, and judging layout through it misclassifies a
+// later doc comment as the previous decl's trailing comment.
+func TestExtract_LineDirectiveDoesNotStealDoc(t *testing.T) {
+	fset, f := mustParse(t, `package p
+
+func Keep() {}
+
+//line src.go:2
+
+// MovedDoc documents Moved.
+func Moved() {}
+`)
+	ms, _ := selectDecls(f, Config{Regex: "^Moved$"})
+	ex := extractMatches(fset, f, ms)
+	if len(ex) != 1 {
+		t.Fatalf("want 1 extracted, got %d", len(ex))
+	}
+	for _, cg := range ex[0].LeadComms {
+		if strings.Contains(cg.Text(), "MovedDoc documents Moved") {
+			return
+		}
+	}
+	t.Fatalf("doc comment did not travel with Moved: //line-adjusted positions used for layout; LeadComms = %v", ex[0].LeadComms)
+}

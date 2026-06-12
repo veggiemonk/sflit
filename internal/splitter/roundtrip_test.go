@@ -1,8 +1,12 @@
 package splitter
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -188,5 +192,51 @@ func Existing() {}
 		[]string{readBack(t, a), readBack(t, b)},
 	); err != nil {
 		t.Fatalf("after move: %v", err)
+	}
+}
+
+// TestMove_MixedSyntheticAndFuncKeepDocComments mixes both match kinds: a
+// func (non-synthetic) declared before a partially narrowed var group
+// (synthetic). The synthetic match must not be emitted ahead of the func,
+// or go/printer flushes the func's doc comment before the var prints.
+func TestMove_MixedSyntheticAndFuncKeepDocComments(t *testing.T) {
+	dir := t.TempDir()
+	a := filepath.Join(dir, "a.go")
+	b := filepath.Join(dir, "b.go")
+	writeFile(t, a, `package p
+
+// DocA documents DocA.
+func DocA() int { return 1 }
+
+var (
+	// travels documents travels.
+	travels = 8
+	stays   = 9
+)
+
+func Other() int { return stays }
+`)
+	if _, err := Run(Config{Source: a, Sink: b, Regex: "^(DocA|travels)$", Move: true}); err != nil {
+		t.Fatal(err)
+	}
+	fset := token.NewFileSet()
+	f, err := parser.ParseFile(fset, b, nil, parser.ParseComments)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doca *ast.FuncDecl
+	for _, d := range f.Decls {
+		if fd, ok := d.(*ast.FuncDecl); ok && fd.Name.Name == "DocA" {
+			doca = fd
+		}
+	}
+	if doca == nil {
+		t.Fatal("DocA not in sink")
+	}
+	if doca.Doc == nil || !strings.Contains(doca.Doc.Text(), "DocA documents DocA") {
+		t.Fatalf("DocA lost its doc comment in the sink (decls rendered out of position order); sink:\n%s", readBack(t, b))
+	}
+	if err := TypeCheckFiles(a, b); err != nil {
+		t.Fatal(err)
 	}
 }

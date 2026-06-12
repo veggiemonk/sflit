@@ -46,7 +46,7 @@ func renderFiles(plan Plan) ([]byte, []byte, error) {
 		combined = append(combined, movedBody...)
 	}
 
-	combined, err = carryNamedImports(plan.SinkPath, combined, plan.SrcFile)
+	combined, err = carryNamedImports(plan.SinkPath, combined, plan.SrcFile, requiredBlankImports(plan.extracted))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -58,16 +58,20 @@ func renderFiles(plan Plan) ([]byte, []byte, error) {
 	return srcBytes, sinkBytes, nil
 }
 
-// carryNamedImports re-adds the source's named imports to the combined sink
-// bytes before goimports runs. goimports resolves unaliased imports from the
-// identifier (and learns aliases from sibling files in the sink's directory),
-// but a named import landing in a directory with no siblings is unrecoverable
+// carryNamedImports re-adds the source's named imports — plus any
+// directive-required blank imports — to the combined sink bytes before
+// goimports runs. goimports resolves unaliased imports from the identifier
+// (and learns aliases from sibling files in the sink's directory), but a
+// named import landing in a directory with no siblings is unrecoverable
 // from the identifier alone — `f.Println` says nothing about "fmt". Unused
-// ones are pruned by the imports.Process call that follows. Blank imports are
-// excluded: goimports never prunes them, so carrying them would duplicate
-// side-effect imports into every sink. Dot imports and alias collisions with
-// the sink's own imports are rejected upstream by validation.
-func carryNamedImports(filename string, combined []byte, src *ast.File) ([]byte, error) {
+// ones are pruned by the imports.Process call that follows. Blank imports
+// are excluded: goimports never prunes them, so carrying them would
+// duplicate side-effect imports into every sink. The blanks parameter is
+// the one exception — import paths a travelling //go: directive requires
+// in the carrying file (requiredBlankImports), added as `_ "path"`. Dot
+// imports and alias collisions with the sink's own imports (source and
+// sink side) are rejected upstream by validation.
+func carryNamedImports(filename string, combined []byte, src *ast.File, blanks []string) ([]byte, error) {
 	type aliased struct{ name, path string }
 	var named []aliased
 	for _, imp := range src.Imports {
@@ -78,6 +82,9 @@ func carryNamedImports(filename string, combined []byte, src *ast.File) ([]byte,
 		if name != "" {
 			named = append(named, aliased{name, path})
 		}
+	}
+	for _, path := range blanks {
+		named = append(named, aliased{"_", path})
 	}
 	if len(named) == 0 {
 		return combined, nil
@@ -95,6 +102,24 @@ func carryNamedImports(filename string, combined []byte, src *ast.File) ([]byte,
 		return nil, fmt.Errorf("render sink with named imports: %w", err)
 	}
 	return out, nil
+}
+
+// requiredBlankImports returns the import paths the sink must blank-import
+// for the directives travelling with the extracted declarations: //go:embed
+// requires `_ "embed"` and //go:linkname requires `_ "unsafe"` in the file
+// carrying the directive. goimports cannot infer either from a directive
+// comment. Validation already restricted directive-carrying operations to
+// the source's own directory, where the carried import preserves semantics.
+func requiredBlankImports(extracted []Extracted) []string {
+	embed, linkname := travellingDirectives(extracted)
+	var paths []string
+	if embed {
+		paths = append(paths, "embed")
+	}
+	if linkname {
+		paths = append(paths, "unsafe")
+	}
+	return paths
 }
 
 func printAndFormat(fset *token.FileSet, file *ast.File, path string) ([]byte, error) {

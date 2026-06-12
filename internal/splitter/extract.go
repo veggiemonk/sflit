@@ -68,8 +68,11 @@ func extractMatches(fset *token.FileSet, file *ast.File, matches []Match) []Extr
 		}
 		lower := prevEnd[d]
 		upper := d.End()
-		lowerLine := fset.Position(lower).Line
-		upperLine := fset.Position(upper).Line
+		// PositionFor with adjusted=false: layout decisions are about bytes
+		// on disk, and //line directives renumber the adjusted view, making
+		// physically distinct lines compare equal.
+		lowerLine := fset.PositionFor(lower, false).Line
+		upperLine := fset.PositionFor(upper, false).Line
 		var owned []*ast.CommentGroup
 		for _, cg := range file.Comments {
 			if consumed[cg] {
@@ -78,7 +81,7 @@ func extractMatches(fset *token.FileSet, file *ast.File, matches []Match) []Extr
 			if cg.End() <= lower {
 				continue
 			}
-			cgLine := fset.Position(cg.Pos()).Line
+			cgLine := fset.PositionFor(cg.Pos(), false).Line
 			if cgLine == lowerLine {
 				// Same-line trailing comment of the previous boundary
 				// (unmoved decl or package clause): it stays behind.
