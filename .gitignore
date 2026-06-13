@@ -6,3 +6,4 @@
 
 # pi delegation logs (local artifacts)
 .agent-runs/
+/_thirdparty
